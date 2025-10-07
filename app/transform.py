@@ -96,7 +96,7 @@ class VideoTransformer:
                         db_transform.output_path = str(output_path)  # type: ignore
                         db_transform.thumbnail_path = str(thumbnail_path)  # type: ignore
                         db_transform.phash = phash  # type: ignore
-                        db_transform.status = StatusEnum.COMPLETED
+                        db_transform.status = StatusEnum.COMPLETED  # type: ignore
                         session.commit()
                 
                 logger.info(f"Transformation completed for download {download.id}")
@@ -106,7 +106,7 @@ class VideoTransformer:
                 with get_db_session() as session:
                     db_transform = session.query(Transform).filter_by(id=transform.id).first()
                     if db_transform:
-                        db_transform.status = StatusEnum.FAILED
+                        db_transform.status = StatusEnum.FAILED  # type: ignore
                         db_transform.error_message = "Video processing failed"  # type: ignore
                         session.commit()
                 
@@ -121,7 +121,7 @@ class VideoTransformer:
                 with get_db_session() as session:
                     db_transform = session.query(Transform).filter_by(id=transform.id).first()
                     if db_transform:
-                        db_transform.status = StatusEnum.FAILED
+                        db_transform.status = StatusEnum.FAILED  # type: ignore
                         db_transform.error_message = str(e)  # type: ignore
                         session.commit()
             except:
