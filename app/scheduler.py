@@ -21,7 +21,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .config import get_settings
 from .db import get_db_session, update_system_status
-from .ig_downloader import download_all_targets
+# from .ig_downloader import download_all_targets  # Function not implemented yet
 from .workers import process_pipeline
 
 logger = logging.getLogger(__name__)
@@ -199,7 +199,7 @@ class VideoScheduler:
             "timezone": self.settings.timezone,
             "schedule_times": self.schedule_times,
             "jobs": jobs,
-            "next_run": self._get_next_run_time().isoformat() if self._get_next_run_time() is not None else None,
+            "next_run": (self._get_next_run_time().isoformat() if self._get_next_run_time() is not None else None),
             "demo_mode": self.is_demo_mode()
         }
     
