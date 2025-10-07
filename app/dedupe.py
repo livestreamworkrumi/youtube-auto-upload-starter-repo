@@ -7,7 +7,7 @@ This module implements two-level deduplication:
 """
 
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 import imagehash
 from sqlalchemy.orm import Session
@@ -61,8 +61,8 @@ class Deduplicator:
             ).all()
             
             for existing_transform in existing_transforms:
-                if self._compare_phashes(transform.phash, existing_transform.phash):
-                    reason = f"Similar to transform {existing_transform.id} (pHash distance: {self._phash_distance(transform.phash, existing_transform.phash)})"
+                if self._compare_phashes(str(transform.phash), str(existing_transform.phash)):
+                    reason = f"Similar to transform {existing_transform.id} (pHash distance: {self._phash_distance(str(transform.phash), str(existing_transform.phash))})"
                     logger.info(f"Duplicate detected: {reason}")
                     return True, reason
         
@@ -199,14 +199,14 @@ class Deduplicator:
             ).all()
             
             unique_transforms = []
-            seen_phashes = set()
+            seen_phashes: Set[str] = set()
             
             for transform in transforms:
                 if transform.phash not in seen_phashes:
                     # Check if this pHash is similar to any we've already seen
                     is_similar = False
                     for seen_phash in seen_phashes:
-                        if self._compare_phashes(transform.phash, seen_phash):
+                        if self._compare_phashes(str(transform.phash), seen_phash):
                             is_similar = True
                             break
                     
