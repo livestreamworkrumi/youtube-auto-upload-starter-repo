@@ -268,21 +268,27 @@ class TestYouTubeClientErrorHandling:
         """Test authentication with flow error."""
         client = YouTubeClient()
         
-        # Mock Path.exists() to return True for client secrets
+        # Mock Path.exists() to return different values for different paths
+        def mock_exists(path_str):
+            path_str = str(path_str)
+            if "client_secrets" in path_str:
+                return True  # Client secrets file exists
+            elif "token" in path_str:
+                return False  # Token file doesn't exist
+            return False
+        
         mock_path = Mock()
-        mock_path.exists.return_value = True
+        mock_path.exists.side_effect = mock_exists
         mock_path_class.return_value = mock_path
         
-        # Mock the token file to not exist (so it tries to authenticate)
-        with patch('builtins.open', side_effect=FileNotFoundError()):
-            with patch('app.youtube_client.InstalledAppFlow') as mock_flow_class:
-                mock_flow = Mock()
-                mock_flow.run_local_server.side_effect = Exception("OAuth error")
-                mock_flow_class.from_client_secrets_file.return_value = mock_flow
-                
-                result = client.authenticate()
-                
-                assert result is False
+        with patch('app.youtube_client.InstalledAppFlow') as mock_flow_class:
+            mock_flow = Mock()
+            mock_flow.run_local_server.side_effect = Exception("OAuth error")
+            mock_flow_class.from_client_secrets_file.return_value = mock_flow
+            
+            result = client.authenticate()
+            
+            assert result is False
     
     def test_upload_video_service_error(self):
         """Test upload video with service error."""
