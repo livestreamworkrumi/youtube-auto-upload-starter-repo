@@ -1,0 +1,48 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+
+# Configuration
+pydantic==2.5.0
+python-dotenv==1.0.0
+
+# Instagram Integration
+instaloader==4.10.3
+
+# Video Processing
+moviepy==1.0.3
+ffmpeg-python==0.2.0
+Pillow==10.1.0
+
+# Image Hashing for Deduplication
+imagehash==4.3.1
+
+# YouTube Integration
+google-api-python-client==2.109.0
+google-auth-oauthlib==1.1.0
+google-auth==2.25.2
+
+# Telegram Bot
+aiogram==3.2.0
+
+# Scheduling
+apscheduler==3.10.4
+
+# Timezone Support
+pytz==2023.3
+
+# HTTP Requests
+httpx==0.25.2
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Development
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1

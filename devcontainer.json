@@ -1,0 +1,77 @@
+{
+    "name": "YouTube Auto Upload",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.pylint",
+                "ms-python.black-formatter",
+                "ms-python.isort",
+                "ms-toolsai.jupyter",
+                "ms-vscode.vscode-json",
+                "redhat.vscode-yaml",
+                "ms-vscode-remote.remote-containers",
+                "ms-vscode.makefile-tools",
+                "ms-python.flake8"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.linting.enabled": true,
+                "python.linting.pylintEnabled": true,
+                "python.linting.flake8Enabled": true,
+                "python.formatting.provider": "black",
+                "python.formatting.blackArgs": ["--line-length=100"],
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.organizeImports": true
+                },
+                "files.exclude": {
+                    "**/__pycache__": true,
+                    "**/*.pyc": true,
+                    "**/node_modules": true,
+                    "**/.git": false
+                }
+            }
+        }
+    },
+    
+    "forwardPorts": [8000, 8080],
+    "portsAttributes": {
+        "8000": {
+            "label": "FastAPI Application",
+            "onAutoForward": "notify"
+        },
+        "8080": {
+            "label": "Alternative Port",
+            "onAutoForward": "silent"
+        }
+    },
+    
+    "postCreateCommand": "make install",
+    "postStartCommand": "make setup-dev",
+    
+    "remoteUser": "vscode",
+    "remoteEnv": {
+        "PYTHONPATH": "${containerWorkspaceFolder}",
+        "DEMO_MODE": "true",
+        "LOG_LEVEL": "INFO"
+    },
+    
+    "mounts": [
+        "source=${localWorkspaceFolder}/.env,target=${containerWorkspaceFolder}/.env,type=bind,consistency=cached"
+    ],
+    
+    "workspaceFolder": "/workspaces/youtube-auto-upload-starter-repo",
+    
+    "containerEnv": {
+        "DEBIAN_FRONTEND": "noninteractive"
+    }
+}
