@@ -170,7 +170,7 @@ async def approve_upload(upload_id: int):
                 raise HTTPException(status_code=404, detail="Approval not found")
             
             approval.status = StatusEnum.COMPLETED
-            approval.approved_at = datetime.utcnow()
+            approval.approved_at = datetime.utcnow()  # type: ignore
             session.commit()
         
         return {"message": "Upload approved", "upload_id": upload_id}
@@ -195,7 +195,7 @@ async def reject_upload(upload_id: int):
                 raise HTTPException(status_code=404, detail="Approval not found")
             
             approval.status = StatusEnum.REJECTED
-            approval.approved_at = datetime.utcnow()
+            approval.approved_at = datetime.utcnow()  # type: ignore
             session.commit()
         
         return {"message": "Upload rejected", "upload_id": upload_id}
