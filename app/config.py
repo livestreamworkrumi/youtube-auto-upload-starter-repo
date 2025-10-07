@@ -9,40 +9,40 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
     """Application settings loaded from environment variables."""
     
     # Demo Mode Configuration
-    demo_mode: bool = Field(default=True, env="DEMO_MODE")
+    demo_mode: bool = Field(default=True)
     
     # Timezone and Scheduling
-    timezone: str = Field(default="Asia/Karachi", env="TIMEZONE")
-    schedule_times: List[str] = Field(default=["08:00", "12:00", "16:00"], env="SCHEDULE_TIMES")
+    timezone: str = Field(default="Asia/Karachi")
+    schedule_times: List[str] = Field(default=["08:00", "12:00", "16:00"])
     
     # YouTube API Configuration
-    youtube_client_secrets: str = Field(default="./client_secrets.json", env="YOUTUBE_CLIENT_SECRETS")
-    token_file: str = Field(default="./token.json", env="TOKEN_FILE")
+    youtube_client_secrets: str = Field(default="./client_secrets.json")
+    token_file: str = Field(default="./token.json")
     
     # Telegram Bot Configuration
-    telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN")
-    telegram_admin_id: int = Field(default=0, env="TELEGRAM_ADMIN_ID")
+    telegram_bot_token: str = Field(default="")
+    telegram_admin_id: int = Field(default=0)
     
     # Storage and Database
-    storage_path: str = Field(default="./storage", env="STORAGE_PATH")
-    db_url: str = Field(default="sqlite:///./data/app.db", env="DB_URL")
+    storage_path: str = Field(default="./storage")
+    db_url: str = Field(default="sqlite:///./data/app.db")
     
     # Branded Assets
-    branded_intro: str = Field(default="./assets/intro.mp4", env="BRANDED_INTRO")
-    branded_outro: str = Field(default="./assets/outro.mp4", env="BRANDED_OUTRO")
+    branded_intro: str = Field(default="./assets/intro.mp4")
+    branded_outro: str = Field(default="./assets/outro.mp4")
     
     # Channel Configuration
-    channel_title: str = Field(default="My YouTube Channel", env="CHANNEL_TITLE")
+    channel_title: str = Field(default="My YouTube Channel")
     
     # Logging
-    log_level: str = Field(default="INFO", env="LOG_LEVEL")
+    log_level: str = Field(default="INFO")
     
     # Video Processing Settings
     target_resolution: tuple = (1080, 1920)  # 9:16 aspect ratio
@@ -58,21 +58,24 @@ class Settings(BaseSettings):
     youtube_upload_chunk_size: int = 1024 * 1024  # 1MB chunks
     youtube_max_retry_attempts: int = 3
     
-    @validator('schedule_times', pre=True)
+    @field_validator('schedule_times', mode='before')
+    @classmethod
     def parse_schedule_times(cls, v):
         """Parse comma-separated schedule times."""
         if isinstance(v, str):
             return [time.strip() for time in v.split(',')]
         return v
     
-    @validator('demo_mode', pre=True)
+    @field_validator('demo_mode', mode='before')
+    @classmethod
     def parse_demo_mode(cls, v):
         """Parse demo mode boolean."""
         if isinstance(v, str):
             return v.lower() in ('true', '1', 'yes', 'on')
         return v
     
-    @validator('telegram_admin_id', pre=True)
+    @field_validator('telegram_admin_id', mode='before')
+    @classmethod
     def parse_telegram_admin_id(cls, v):
         """Parse telegram admin ID."""
         if isinstance(v, str):
@@ -166,5 +169,22 @@ def get_settings() -> Settings:
 def reload_settings() -> Settings:
     """Reload settings from environment."""
     global settings
-    settings = Settings()
+    import os
+    # Load from environment variables
+    env_vars = {
+        'demo_mode': os.getenv('DEMO_MODE', 'true').lower() in ('true', '1', 'yes', 'on'),
+        'timezone': os.getenv('TIMEZONE', 'Asia/Karachi'),
+        'schedule_times': [t.strip() for t in os.getenv('SCHEDULE_TIMES', '08:00,12:00,16:00').split(',')],
+        'youtube_client_secrets': os.getenv('YOUTUBE_CLIENT_SECRETS', './client_secrets.json'),
+        'token_file': os.getenv('TOKEN_FILE', './token.json'),
+        'telegram_bot_token': os.getenv('TELEGRAM_BOT_TOKEN', ''),
+        'telegram_admin_id': int(os.getenv('TELEGRAM_ADMIN_ID', '0')) if os.getenv('TELEGRAM_ADMIN_ID', '0').isdigit() else 0,
+        'storage_path': os.getenv('STORAGE_PATH', './storage'),
+        'db_url': os.getenv('DB_URL', 'sqlite:///./data/app.db'),
+        'branded_intro': os.getenv('BRANDED_INTRO', './assets/intro.mp4'),
+        'branded_outro': os.getenv('BRANDED_OUTRO', './assets/outro.mp4'),
+        'channel_title': os.getenv('CHANNEL_TITLE', 'My YouTube Channel'),
+        'log_level': os.getenv('LOG_LEVEL', 'INFO'),
+    }
+    settings = Settings(**env_vars)
     return settings
