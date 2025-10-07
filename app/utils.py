@@ -393,6 +393,30 @@ def get_video_info(video_path: str) -> dict:
         return {}
 
 
+def clean_filename(filename: str) -> str:
+    """Clean filename for safe storage.
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Cleaned filename
+    """
+    # Remove or replace invalid characters
+    cleaned = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    
+    # Remove extra spaces and dots
+    cleaned = re.sub(r'\s+', '_', cleaned)
+    cleaned = re.sub(r'\.+', '.', cleaned)
+    
+    # Ensure filename is not too long
+    if len(cleaned) > 200:
+        name, ext = Path(cleaned).stem, Path(cleaned).suffix
+        cleaned = name[:200-len(ext)] + ext
+    
+    return cleaned
+
+
 if __name__ == "__main__":
     # Test utility functions
     print("Testing utility functions...")
