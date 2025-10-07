@@ -174,6 +174,8 @@ class VideoScheduler:
             if next_run is None or today_run < next_run:
                 next_run = today_run
         
+        if next_run is None:
+            return None
         if pytz:
             return next_run.astimezone(pytz.UTC)
         else:
@@ -197,7 +199,7 @@ class VideoScheduler:
             "timezone": self.settings.timezone,
             "schedule_times": self.schedule_times,
             "jobs": jobs,
-            "next_run": self._get_next_run_time().isoformat() if self._get_next_run_time() else None,
+            "next_run": self._get_next_run_time().isoformat() if self._get_next_run_time() is not None else None,
             "demo_mode": self.is_demo_mode()
         }
     
