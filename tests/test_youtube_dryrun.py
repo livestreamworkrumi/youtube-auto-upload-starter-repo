@@ -268,6 +268,9 @@ class TestYouTubeClientErrorHandling:
         """Test authentication with flow error."""
         client = YouTubeClient()
         
+        # Disable demo mode for this test
+        client.settings.demo_mode = False
+        
         # Mock Path.exists() to return different values for different paths
         def mock_exists(path_str):
             path_str = str(path_str)
