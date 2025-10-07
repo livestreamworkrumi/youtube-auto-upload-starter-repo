@@ -211,8 +211,40 @@ class TestDedupeUtilities:
 class TestDedupeIntegration:
     """Integration tests for deduplication."""
     
-    def test_process_transforms_for_duplicates(self):
+    def test_process_transforms_for_duplicates(self, db_session):
         """Test processing all transforms for duplicates."""
+        from app.models import Transform, Download, InstagramTarget
+        from datetime import datetime
+        
+        # Create test data
+        target = InstagramTarget(username="test_user", is_active=True)
+        download = Download(
+            target=target,
+            ig_post_id="test_post",
+            ig_shortcode="test_post",
+            source_url="https://instagram.com/p/test_post",
+            local_path="test_video.mp4",
+            permission_proof_path="test_proof.txt",
+            file_size=1024,
+            duration_seconds=30,
+            caption="Test caption",
+            status="COMPLETED"
+        )
+        
+        transform = Transform(
+            download_id=download.id,
+            input_path="test_video.mp4",
+            output_path="test_output.mp4",
+            thumbnail_path="test_thumb.jpg",
+            phash="test_phash_123",
+            status="COMPLETED"
+        )
+        
+        db_session.add(target)
+        db_session.add(download)
+        db_session.add(transform)
+        db_session.commit()
+        
         deduplicator = Deduplicator()
         
         with patch.object(deduplicator, 'check_duplicate_transform') as mock_check:
