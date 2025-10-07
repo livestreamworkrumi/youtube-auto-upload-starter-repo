@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 
 try:
-    import pytz
+    import pytz  # type: ignore
 except ImportError:
     pytz = None  # type: ignore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
