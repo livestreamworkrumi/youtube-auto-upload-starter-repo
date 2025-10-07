@@ -209,7 +209,7 @@ When videos are ready for upload, you'll receive preview messages with:
                 return
             
             try:
-                upload_id = int(callback.data.split("_")[1])
+                upload_id = int((callback.data or "").split("_")[1])
                 await self._handle_approval(upload_id, True, callback)
             except Exception as e:
                 await callback.answer(f"❌ Approval failed: {e}", show_alert=True)
@@ -221,7 +221,7 @@ When videos are ready for upload, you'll receive preview messages with:
                 return
             
             try:
-                upload_id = int(callback.data.split("_")[1])
+                upload_id = int((callback.data or "").split("_")[1])
                 await self._handle_approval(upload_id, False, callback)
             except Exception as e:
                 await callback.answer(f"❌ Rejection failed: {e}", show_alert=True)
@@ -301,7 +301,7 @@ When videos are ready for upload, you'll receive preview messages with:
                 await message.reply(f"⚠️ Target @{username} not found.")
                 return
             
-            target.is_active = False
+            target.is_active = False  # type: ignore
             session.commit()
             
             await message.reply(f"✅ Deactivated target @{username} successfully!")
@@ -317,13 +317,13 @@ When videos are ready for upload, you'll receive preview messages with:
             # Update approval record
             approval = session.query(Approval).filter_by(upload_id=upload_id).first()
             if approval:
-                approval.status = StatusEnum.COMPLETED if approved else StatusEnum.REJECTED
+                approval.status = StatusEnum.COMPLETED if approved else StatusEnum.REJECTED  # type: ignore
                 approval.approved_by = str(callback.from_user.id)  # type: ignore
                 approval.approved_at = datetime.utcnow()  # type: ignore
                 session.commit()
             
             # Update upload status
-            upload.status = StatusEnum.COMPLETED if approved else StatusEnum.REJECTED
+            upload.status = StatusEnum.COMPLETED if approved else StatusEnum.REJECTED  # type: ignore
             session.commit()
             
             if approved:
@@ -405,7 +405,7 @@ When videos are ready for upload, you'll receive preview messages with:
 📋 **Description:**
 {upload.description[:200]}{'...' if len(upload.description) > 200 else ''}
 
-🏷️ **Tags:** {json.loads(upload.tags) if upload.tags else []}
+🏷️ **Tags:** {json.loads(str(upload.tags)) if upload.tags else []}
 
 👤 **Creator:** @{download.target.username}
 
