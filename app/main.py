@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .db import init_database, get_database_info, get_system_status
+from .models import StatusEnum
 from .scheduler import get_scheduler_status, run_pipeline_now
 from .telegram_bot import create_telegram_bot
 from .workers import process_pipeline
