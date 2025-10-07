@@ -125,7 +125,7 @@ class InstagramDownloader:
         
         for i, (video_path, source_url, proof_path) in enumerate(sample_videos[:max_posts]):
             # Create demo permission proof file
-            self._create_demo_proof_file(proof_path, username, f"demo_post_{i}")
+            self._create_demo_proof_file(Path(proof_path), username, f"demo_post_{i}")
             
             # Create download record
             with get_db_session() as session:
