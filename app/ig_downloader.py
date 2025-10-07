@@ -1,352 +1,402 @@
 """
-Instagram downloader module using instaloader.
+Video transformation module for converting Instagram videos to YouTube Shorts format.
 
-This module handles downloading videos from public Instagram accounts
-and storing them locally with metadata and permission proof tracking.
+This module handles:
+- Converting videos to 9:16 aspect ratio (1080x1920)
+- Adding intro and outro videos
+- Overlaying credit text and subscribe CTA
+- Generating thumbnails
+- Computing perceptual hashes for deduplication
 """
 
 import logging
 import os
-from datetime import datetime
+import subprocess
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-from sqlalchemy.orm import Session
+import imagehash
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import (
+    CompositeVideoClip, ImageClip, TextClip, VideoFileClip, 
+    concatenate_videoclips
+)
 
 from .config import get_settings
 from .db import get_db_session
-from .models import Download, InstagramTarget, StatusEnum
+from .models import Download, Transform, StatusEnum
 
 logger = logging.getLogger(__name__)
 
 
-class InstagramDownloader:
-    """Instagram downloader using instaloader library."""
+class VideoTransformer:
+    """Video transformation pipeline for YouTube Shorts."""
     
     def __init__(self):
         self.settings = get_settings()
-        self.download_path = self.settings.storage_path_obj / "downloads"
-        self.proofs_path = self.settings.storage_path_obj / "proofs"
+        self.output_path = self.settings.storage_path_obj / "transforms"
+        self.thumbnails_path = self.settings.storage_path_obj / "thumbnails"
         
         # Ensure directories exist
-        self.download_path.mkdir(parents=True, exist_ok=True)
-        self.proofs_path.mkdir(parents=True, exist_ok=True)
-    
-    def is_demo_mode(self) -> bool:
-        """Check if running in demo mode."""
-        return self.settings.is_demo_mode()
-    
-    def get_sample_videos(self) -> List[Tuple[str, str, str]]:
-        """Get sample videos for demo mode.
+        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.thumbnails_path.mkdir(parents=True, exist_ok=True)
         
-        Returns:
-            List of tuples: (filename, source_url, permission_proof_path)
-        """
-        sample_videos = []
-        sample_path = self.settings.sample_videos_path_obj
-        
-        if sample_path.exists():
-            for video_file in sample_path.glob("*.mp4"):
-                source_url = f"https://instagram.com/p/sample_{video_file.stem}"
-                proof_path = self.settings.sample_proofs_path_obj / f"proof_{video_file.stem}.txt"
-                sample_videos.append((str(video_file), source_url, str(proof_path)))
-        
-        return sample_videos
+        # Target resolution for YouTube Shorts
+        self.target_width, self.target_height = self.settings.target_resolution
     
-    def download_from_instagram(self, username: str, max_posts: int = 5) -> List[Download]:
-        """Download videos from Instagram account.
+    def transform_video(self, download: Download) -> Optional[Transform]:
+        """Transform a downloaded video to YouTube Shorts format.
         
         Args:
-            username: Instagram username to download from
-            max_posts: Maximum number of posts to download
+            download: Download record to transform
             
         Returns:
-            List of Download objects created
+            Transform record or None if failed
         """
-        if self.is_demo_mode():
-            return self._demo_download(username, max_posts)
-        
         try:
-            import instaloader
+            logger.info(f"Starting transformation for download {download.id}")
             
-            # Initialize instaloader
-            loader = instaloader.Instaloader(
-                download_pictures=False,
-                download_videos=True,
-                download_video_thumbnails=False,
-                download_geotags=False,
-                download_comments=False,
-                save_metadata=False,
-                compress_json=False
+            # Create transform record
+            with get_db_session() as session:
+                transform = Transform(
+                    download_id=download.id,
+                    input_path=download.local_path,
+                    output_path="",  # Will be set after processing
+                    thumbnail_path="",  # Will be set after processing
+                    status=StatusEnum.IN_PROGRESS
+                )
+                session.add(transform)
+                session.commit()
+                session.refresh(transform)
+            
+            # Generate output paths
+            output_filename = f"transform_{transform.id}_{download.ig_shortcode}.mp4"
+            thumbnail_filename = f"thumb_{transform.id}_{download.ig_shortcode}.jpg"
+            
+            output_path = self.output_path / output_filename
+            thumbnail_path = self.thumbnails_path / thumbnail_filename
+            
+            # Process the video
+            success = self._process_video(
+                input_path=str(download.local_path),
+                output_path=output_path,
+                thumbnail_path=thumbnail_path,
+                ig_username=download.target.username,
+                ig_shortcode=str(download.ig_shortcode)
             )
             
-            # Get profile
-            profile = instaloader.Profile.from_username(loader.context, username)
-            
-            downloads = []
-            downloaded_count = 0
-            
-            for post in profile.get_posts():
-                if downloaded_count >= max_posts:
-                    break
+            if success:
+                # Generate perceptual hash
+                phash = self._compute_phash(output_path)
                 
-                # Only process video posts
-                if not post.is_video:
-                    continue
-                
-                # Check if already downloaded
+                # Update transform record
                 with get_db_session() as session:
-                    existing = session.query(Download).filter_by(
-                        ig_post_id=post.shortcode
-                    ).first()
-                    
-                    if existing:
-                        logger.info(f"Post {post.shortcode} already downloaded, skipping")
-                        continue
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.output_path = str(output_path)  # type: ignore
+                        db_transform.thumbnail_path = str(thumbnail_path)  # type: ignore
+                        db_transform.phash = phash  # type: ignore
+                        db_transform.status = StatusEnum.COMPLETED
+                        session.commit()
                 
-                # Download the video
-                download = self._download_single_post(post, username)
-                if download:
-                    downloads.append(download)
-                    downloaded_count += 1
-            
-            return downloads
-            
-        except Exception as e:
-            logger.error(f"Failed to download from Instagram account {username}: {e}")
-            return []
-    
-    def _demo_download(self, username: str, max_posts: int) -> List[Download]:
-        """Demo mode download using sample videos."""
-        logger.info(f"Demo mode: simulating download from {username}")
-        
-        sample_videos = self.get_sample_videos()
-        downloads = []
-        
-        for i, (video_path, source_url, proof_path) in enumerate(sample_videos[:max_posts]):
-            # Create demo permission proof file
-            self._create_demo_proof_file(Path(proof_path), username, f"demo_post_{i}")
-            
-            # Create download record
-            with get_db_session() as session:
-                # Get or create target
-                target = session.query(InstagramTarget).filter_by(username=username).first()
-                if not target:
-                    target = InstagramTarget(username=username, is_active=True)
-                    session.add(target)
-                    session.commit()
+                logger.info(f"Transformation completed for download {download.id}")
+                return transform
+            else:
+                # Mark as failed
+                with get_db_session() as session:
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.status = StatusEnum.FAILED
+                        db_transform.error_message = "Video processing failed"  # type: ignore
+                        session.commit()
                 
-                # Create download record
-                download = Download(
-                    target_id=target.id,
-                    ig_post_id=f"demo_{username}_{i}",
-                    ig_shortcode=f"demo_{username}_{i}",
-                    source_url=source_url,
-                    local_path=video_path,
-                    permission_proof_path=proof_path,
-                    file_size=os.path.getsize(video_path) if os.path.exists(video_path) else 0,
-                    duration_seconds=30,  # Demo duration
-                    caption=f"Demo video {i} from {username}"
-                )
-                
-                session.add(download)
-                session.commit()
-                downloads.append(download)
-                
-                logger.info(f"Demo download created: {download.ig_post_id}")
-        
-        return downloads
-    
-    def _download_single_post(self, post, username: str) -> Optional[Download]:
-        """Download a single Instagram post."""
-        try:
-            import instaloader
-            
-            # Generate file paths
-            filename = f"{username}_{post.shortcode}.mp4"
-            local_path = self.download_path / filename
-            proof_path = self.proofs_path / f"{username}_{post.shortcode}_proof.txt"
-            
-            # Download the video
-            loader = instaloader.Instaloader(
-                download_pictures=False,
-                download_videos=True,
-                download_video_thumbnails=False,
-                download_geotags=False,
-                download_comments=False,
-                save_metadata=False,
-                compress_json=False,
-                dirname_pattern=str(self.download_path)
-            )
-            
-            loader.download_post(post, target=filename)
-            
-            # Move to final location if needed
-            temp_path = self.download_path / filename
-            if temp_path.exists():
-                temp_path.rename(local_path)
-            
-            # Create permission proof file
-            self._create_permission_proof_file(proof_path, post, username)
-            
-            # Create download record
-            with get_db_session() as session:
-                # Get or create target
-                target = session.query(InstagramTarget).filter_by(username=username).first()
-                if not target:
-                    target = InstagramTarget(username=username, is_active=True)
-                    session.add(target)
-                    session.commit()
-                
-                # Get file info
-                file_size = os.path.getsize(local_path) if local_path.exists() else 0
-                
-                # Create download record
-                download = Download(
-                    target_id=target.id,
-                    ig_post_id=post.shortcode,
-                    ig_shortcode=post.shortcode,
-                    source_url=f"https://instagram.com/p/{post.shortcode}",
-                    local_path=str(local_path),
-                    permission_proof_path=str(proof_path),
-                    file_size=file_size,
-                    duration_seconds=post.video_duration if hasattr(post, 'video_duration') else None,
-                    caption=post.caption if post.caption else None
-                )
-                
-                session.add(download)
-                session.commit()
-                
-                logger.info(f"Downloaded post {post.shortcode} from {username}")
-                return download
+                logger.error(f"Transformation failed for download {download.id}")
+                return None
                 
         except Exception as e:
-            logger.error(f"Failed to download post {post.shortcode}: {e}")
+            logger.error(f"Transform error for download {download.id}: {e}")
+            
+            # Update transform record with error
+            try:
+                with get_db_session() as session:
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.status = StatusEnum.FAILED
+                        db_transform.error_message = str(e)  # type: ignore
+                        session.commit()
+            except:
+                pass
+            
             return None
     
-    def _create_permission_proof_file(self, proof_path: Path, post, username: str) -> None:
-        """Create permission proof file for real Instagram download."""
-        try:
-            proof_content = f"""
-PERMISSION PROOF - INSTAGRAM DOWNLOAD
-====================================
-
-Account: @{username}
-Post ID: {post.shortcode}
-Post URL: https://instagram.com/p/{post.shortcode}
-Download Date: {datetime.utcnow().isoformat()}
-Download Method: instaloader (public content)
-
-This download was performed from a public Instagram account.
-The content is publicly available and accessible to anyone.
-
-Proof Details:
-- Account is public: Yes
-- Content is publicly accessible: Yes
-- Download method: Automated via instaloader
-- Terms of service: Compliant with Instagram's public API usage
-
-Note: This is a proof of permission for content that is publicly
-available on Instagram. The original creator retains all rights
-to their content.
-"""
+    def _process_video(
+        self, 
+        input_path: str, 
+        output_path: Path, 
+        thumbnail_path: Path,
+        ig_username: str,
+        ig_shortcode: str
+    ) -> bool:
+        """Process video with MoviePy.
+        
+        Args:
+            input_path: Path to input video
+            output_path: Path for output video
+            thumbnail_path: Path for thumbnail image
+            ig_username: Instagram username for credit
+            ig_shortcode: Instagram post shortcode
             
-            with open(proof_path, 'w', encoding='utf-8') as f:
-                f.write(proof_content.strip())
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Load input video
+            video = VideoFileClip(input_path)
+            
+            # Resize to target aspect ratio (9:16)
+            video_resized = self._resize_to_aspect_ratio(video)
+            
+            # Add intro and outro if available
+            final_video = self._add_intro_outro(video_resized)
+            
+            # Add overlays (credit text and subscribe CTA)
+            final_video = self._add_overlays(final_video, ig_username)
+            
+            # Write output video
+            final_video.write_videofile(
+                str(output_path),
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True,
+                verbose=False,
+                logger=None
+            )
+            
+            # Generate thumbnail
+            self._generate_thumbnail(final_video, thumbnail_path)
+            
+            # Clean up
+            video.close()
+            final_video.close()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Video processing error: {e}")
+            return False
+    
+    def _resize_to_aspect_ratio(self, video: VideoFileClip) -> VideoFileClip:
+        """Resize video to 9:16 aspect ratio (1080x1920)."""
+        try:
+            # Calculate dimensions to maintain aspect ratio and fit in target size
+            video_w, video_h = video.size
+            target_w, target_h = self.target_width, self.target_height
+            
+            # Calculate scaling factor to fit video in target dimensions
+            scale_w = target_w / video_w
+            scale_h = target_h / video_h
+            
+            # Use the smaller scale to ensure video fits within target dimensions
+            scale = min(scale_w, scale_h)
+            
+            new_w = int(video_w * scale)
+            new_h = int(video_h * scale)
+            
+            # Resize video
+            video_resized = video.resize((new_w, new_h))
+            
+            # Create background clip with target dimensions
+            background = ImageClip(
+                size=(target_w, target_h),
+                color=(0, 0, 0),  # Black background
+                duration=video_resized.duration
+            )
+            
+            # Center the resized video on the background
+            video_centered = video_resized.set_position('center')
+            
+            # Composite the video on the background
+            final_video = CompositeVideoClip([background, video_centered])
+            
+            return final_video
+            
+        except Exception as e:
+            logger.error(f"Error resizing video: {e}")
+            return video
+    
+    def _add_intro_outro(self, video: VideoFileClip) -> VideoFileClip:
+        """Add intro and outro videos if available."""
+        try:
+            clips = []
+            
+            # Add intro if available
+            intro_path = Path(self.settings.branded_intro)
+            if intro_path.exists():
+                try:
+                    intro = VideoFileClip(str(intro_path))
+                    clips.append(intro)
+                    logger.info("Added intro video")
+                except Exception as e:
+                    logger.warning(f"Could not load intro video: {e}")
+            
+            # Add main video
+            clips.append(video)
+            
+            # Add outro if available
+            outro_path = Path(self.settings.branded_outro)
+            if outro_path.exists():
+                try:
+                    outro = VideoFileClip(str(outro_path))
+                    clips.append(outro)
+                    logger.info("Added outro video")
+                except Exception as e:
+                    logger.warning(f"Could not load outro video: {e}")
+            
+            # Concatenate all clips
+            if len(clips) > 1:
+                final_video = concatenate_videoclips(clips)
+                return final_video
+            else:
+                return video
                 
         except Exception as e:
-            logger.error(f"Failed to create permission proof file: {e}")
+            logger.error(f"Error adding intro/outro: {e}")
+            return video
     
-    def _create_demo_proof_file(self, proof_path: Path, username: str, post_id: str) -> None:
-        """Create demo permission proof file."""
+    def _add_overlays(self, video: VideoFileClip, ig_username: str) -> VideoFileClip:
+        """Add credit text and subscribe CTA overlays."""
         try:
-            proof_content = f"""
-DEMO PERMISSION PROOF
-====================
-
-Account: @{username}
-Post ID: {post_id}
-Download Date: {datetime.utcnow().isoformat()}
-Mode: DEMO
-
-This is a demo permission proof file for testing purposes.
-In real mode, this would contain actual permission verification
-for publicly available Instagram content.
-"""
+            clips = [video]
             
-            proof_path = Path(proof_path)
-            proof_path.parent.mkdir(parents=True, exist_ok=True)
+            # Add credit text overlay
+            credit_text = f"Credit: @{ig_username}"
+            credit_clip = TextClip(
+                credit_text,
+                fontsize=24,
+                color='white',
+                font='Arial-Bold',
+                stroke_color='black',
+                stroke_width=2
+            ).set_position(('left', 'bottom')).set_duration(video.duration).set_start(0)
             
-            with open(proof_path, 'w', encoding='utf-8') as f:
-                f.write(proof_content.strip())
-                
+            clips.append(credit_clip)
+            
+            # Add subscribe CTA (simple text for now)
+            subscribe_text = "Subscribe for more!"
+            subscribe_clip = TextClip(
+                subscribe_text,
+                fontsize=20,
+                color='red',
+                font='Arial-Bold',
+                stroke_color='white',
+                stroke_width=1
+            ).set_position(('right', 'top')).set_duration(video.duration).set_start(0)
+            
+            clips.append(subscribe_clip)
+            
+            # Composite all clips
+            final_video = CompositeVideoClip(clips)
+            return final_video
+            
         except Exception as e:
-            logger.error(f"Failed to create demo permission proof file: {e}")
+            logger.error(f"Error adding overlays: {e}")
+            return video
     
-    def download_all_targets(self) -> List[Download]:
-        """Download from all active Instagram targets."""
-        with get_db_session() as session:
-            targets = session.query(InstagramTarget).filter_by(is_active=True).all()
+    def _generate_thumbnail(self, video: VideoFileClip, thumbnail_path: Path) -> bool:
+        """Generate thumbnail from video."""
+        try:
+            # Take frame at 1 second or middle of video
+            frame_time = min(1.0, video.duration / 2)
             
-            all_downloads = []
-            for target in targets:
-                logger.info(f"Downloading from target: {target.username}")
-                downloads = self.download_from_instagram(
-                    target.username, 
-                    self.settings.max_posts_per_account
-                )
-                all_downloads.extend(downloads)
-                
-                # Update last_checked timestamp
-                target.last_checked = datetime.utcnow()
-                session.commit()
+            # Save frame as image
+            video.save_frame(str(thumbnail_path), t=frame_time)
             
-            return all_downloads
+            # Resize thumbnail to standard size
+            with Image.open(thumbnail_path) as img:
+                img_resized = img.resize((480, 854))  # 9:16 aspect ratio
+                img_resized.save(thumbnail_path, 'JPEG', quality=85)
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error generating thumbnail: {e}")
+            return False
     
-    def get_download_stats(self) -> dict:
-        """Get download statistics."""
+    def _compute_phash(self, video_path: Path) -> Optional[str]:
+        """Compute perceptual hash for video deduplication."""
+        try:
+            # Extract frame at 1 second
+            with VideoFileClip(str(video_path)) as video:
+                frame_time = min(1.0, video.duration / 2)
+                video.save_frame('temp_frame.jpg', t=frame_time)
+            
+            # Compute hash from frame
+            with Image.open('temp_frame.jpg') as img:
+                hash_value = imagehash.phash(img)
+            
+            # Clean up temp file
+            if os.path.exists('temp_frame.jpg'):
+                os.remove('temp_frame.jpg')
+            
+            return str(hash_value)
+            
+        except Exception as e:
+            logger.error(f"Error computing pHash: {e}")
+            return None
+    
+    def get_transform_stats(self) -> dict:
+        """Get transformation statistics."""
         with get_db_session() as session:
-            total_downloads = session.query(Download).count()
-            total_targets = session.query(InstagramTarget).filter_by(is_active=True).count()
+            total_transforms = session.query(Transform).count()
+            completed_transforms = session.query(Transform).filter_by(
+                status=StatusEnum.COMPLETED
+            ).count()
+            failed_transforms = session.query(Transform).filter_by(
+                status=StatusEnum.FAILED
+            ).count()
             
             return {
-                "total_downloads": total_downloads,
-                "active_targets": total_targets,
-                "download_path": str(self.download_path),
-                "proofs_path": str(self.proofs_path),
+                "total_transforms": total_transforms,
+                "completed_transforms": completed_transforms,
+                "failed_transforms": failed_transforms,
+                "output_path": str(self.output_path),
+                "thumbnails_path": str(self.thumbnails_path),
             }
 
 
-def create_downloader() -> InstagramDownloader:
-    """Create and return an Instagram downloader instance."""
-    return InstagramDownloader()
+def create_transformer() -> VideoTransformer:
+    """Create and return a video transformer instance."""
+    return VideoTransformer()
 
 
-# Utility functions for external use
-def download_from_username(username: str, max_posts: int = 5) -> List[Download]:
-    """Download videos from a specific Instagram username."""
-    downloader = create_downloader()
-    return downloader.download_from_instagram(username, max_posts)
+def transform_download(download: Download) -> Optional[Transform]:
+    """Transform a single download."""
+    transformer = create_transformer()
+    return transformer.transform_video(download)
 
 
-def download_all_targets() -> List[Download]:
-    """Download from all configured Instagram targets."""
-    downloader = create_downloader()
-    return downloader.download_all_targets()
+def transform_all_pending() -> list:
+    """Transform all pending downloads."""
+    transformer = create_transformer()
+    transforms = []
+    
+    with get_db_session() as session:
+        # Get downloads that haven't been transformed yet
+        downloads = session.query(Download).outerjoin(Transform).filter(
+            Transform.id.is_(None)
+        ).all()
+        
+        for download in downloads:
+            transform = transformer.transform_video(download)
+            if transform:
+                transforms.append(transform)
+    
+    return transforms
 
 
 if __name__ == "__main__":
     # Allow running this module directly for testing
-    downloader = create_downloader()
-    
-    if downloader.is_demo_mode():
-        print("Running in demo mode...")
-        downloads = downloader.download_from_instagram("demo_user", 2)
-        print(f"Demo downloads created: {len(downloads)}")
-    else:
-        print("Running in real mode...")
-        downloads = downloader.download_all_targets()
-        print(f"Real downloads created: {len(downloads)}")
-    
-    stats = downloader.get_download_stats()
-    print(f"Download stats: {stats}")
+    transformer = create_transformer()
+    stats = transformer.get_transform_stats()
+    print(f"Transform stats: {stats}")
