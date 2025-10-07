@@ -21,7 +21,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from .config import get_settings
 from .db import get_db_session, update_system_status
-# from .ig_downloader import download_all_targets  # Function not implemented yet
+from .ig_downloader import InstagramDownloader
 from .workers import process_pipeline
 
 logger = logging.getLogger(__name__)
