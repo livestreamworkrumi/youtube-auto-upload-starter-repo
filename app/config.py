@@ -189,11 +189,11 @@ def reload_settings() -> Settings:
     settings = Settings(
         demo_mode=bool(env_vars['demo_mode']),
         timezone=str(env_vars['timezone']),
-        schedule_times=list(env_vars['schedule_times']),
+        schedule_times=env_vars['schedule_times'],
         youtube_client_secrets=str(env_vars['youtube_client_secrets']),
         token_file=str(env_vars['token_file']),
         telegram_bot_token=str(env_vars['telegram_bot_token']),
-        telegram_admin_id=int(env_vars['telegram_admin_id']),
+        telegram_admin_id=env_vars['telegram_admin_id'],
         storage_path=str(env_vars['storage_path']),
         db_url=str(env_vars['db_url']),
         branded_intro=str(env_vars['branded_intro']),
