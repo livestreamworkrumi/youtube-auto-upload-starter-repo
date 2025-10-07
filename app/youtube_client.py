@@ -181,7 +181,7 @@ class YouTubeClient:
                     if db_upload:
                         db_upload.yt_video_id = video_id
                         db_upload.status = StatusEnum.COMPLETED
-                        db_upload.uploaded_at = datetime.utcnow()
+                        db_upload.uploaded_at = datetime.utcnow()  # type: ignore
                         session.commit()
                 
                 logger.info(f"Video uploaded successfully: {video_id}")
@@ -192,7 +192,7 @@ class YouTubeClient:
                     db_upload = session.query(Upload).filter_by(id=upload.id).first()
                     if db_upload:
                         db_upload.status = StatusEnum.FAILED
-                        db_upload.error_message = "Upload failed after retries"
+                        db_upload.error_message = "Upload failed after retries"  # type: ignore
                         session.commit()
                 
                 logger.error(f"Video upload failed for transform {transform.id}")
@@ -207,7 +207,7 @@ class YouTubeClient:
                     db_upload = session.query(Upload).filter_by(id=upload.id).first()
                     if db_upload:
                         db_upload.status = StatusEnum.FAILED
-                        db_upload.error_message = str(e)
+                        db_upload.error_message = str(e)  # type: ignore
                         session.commit()
             except:
                 pass
