@@ -57,7 +57,7 @@ class Deduplicator:
             existing_transforms = session.query(Transform).filter(
                 Transform.id != transform.id,  # type: ignore
                 Transform.phash.isnot(None),
-                Transform.status == StatusEnum.COMPLETED
+                Transform.status == StatusEnum.COMPLETED  # type: ignore
             ).all()
             
             for existing_transform in existing_transforms:
@@ -137,7 +137,7 @@ class Deduplicator:
             
             # Calculate average pHash distance for similar content
             completed_transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
@@ -173,7 +173,7 @@ class Deduplicator:
         with get_db_session() as session:
             # Get all completed transforms that haven't been checked for duplicates
             transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
@@ -194,7 +194,7 @@ class Deduplicator:
         """
         with get_db_session() as session:
             transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
