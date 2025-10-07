@@ -9,7 +9,7 @@ This module tests the YouTube upload client including:
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, mock_open
 
 from app.youtube_client import YouTubeClient, create_youtube_client
 from app.models import Transform, Download, InstagramTarget
@@ -278,9 +278,11 @@ class TestYouTubeClientErrorHandling:
             mock_flow.run_local_server.side_effect = Exception("OAuth error")
             mock_flow_class.from_client_secrets_file.return_value = mock_flow
             
-            result = client.authenticate()
-            
-            assert result is False
+            # Mock the token file operations
+            with patch('builtins.open', mock_open()) as mock_file:
+                result = client.authenticate()
+                
+                assert result is False
     
     def test_upload_video_service_error(self):
         """Test upload video with service error."""
