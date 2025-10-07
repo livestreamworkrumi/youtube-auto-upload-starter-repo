@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple
 
 from .config import get_settings
 from .db import get_db_session
-from .models import Download, InstagramTarget, PermissionProof, StatusEnum
+from .models import Download, InstagramTarget, StatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -243,7 +243,7 @@ Demo Mode: This is a simulated permission proof for testing purposes.
                     return False
                 
                 # Deactivate instead of deleting to preserve history
-                target.is_active = False
+                target.is_active = False  # type: ignore
                 session.commit()
                 
                 logger.info(f"Removed target: @{username}")
