@@ -13,11 +13,12 @@ from sqlalchemy import (
     Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, Integer,
     LargeBinary, String, Text, create_engine
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 from sqlalchemy.sql import func
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 
 class StatusEnum(str, Enum):
@@ -80,7 +81,7 @@ class Transform(Base):
     output_path = Column(String(500), nullable=False)
     thumbnail_path = Column(String(500), nullable=True)
     phash = Column(String(255), index=True, nullable=True)
-    status = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
+    status: StatusEnum = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
     error_message = Column(Text, nullable=True)
     transform_duration_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
@@ -102,7 +103,7 @@ class Upload(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     tags = Column(Text, nullable=True)  # JSON string of tags
-    status = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
+    status: StatusEnum = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
@@ -121,7 +122,7 @@ class Approval(Base):
     id = Column(Integer, primary_key=True, index=True)
     upload_id = Column(Integer, ForeignKey("uploads.id"), nullable=False)
     telegram_message_id = Column(Integer, nullable=True)
-    status = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
+    status: StatusEnum = Column(SQLEnum(StatusEnum), default=StatusEnum.PENDING, nullable=False)
     approved_by = Column(String(255), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
