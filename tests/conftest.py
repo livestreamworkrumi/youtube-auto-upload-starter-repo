@@ -47,8 +47,11 @@ def db_session(test_db):
     
     # Initialize database with test URL
     engine = get_engine()
-    SessionMaker = get_session_maker()
     
+    # Ensure tables are created for this session
+    Base.metadata.create_all(engine)
+    
+    SessionMaker = get_session_maker()
     session = SessionMaker()
     
     yield session
@@ -176,3 +179,12 @@ def setup_test_environment():
     
     # Cleanup environment variables if needed
     pass
+
+
+@pytest.fixture(autouse=True)
+def ensure_database_tables():
+    """Ensure database tables are created for all tests."""
+    from app.db import get_engine
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    yield
