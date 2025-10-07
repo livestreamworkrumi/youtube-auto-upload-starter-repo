@@ -26,6 +26,9 @@ def test_db():
     # Set environment variable for tests
     os.environ['DB_URL'] = db_url
     
+    # Initialize database properly
+    init_database(db_url)
+    
     # Create engine and tables
     engine = create_engine(db_url, echo=False)
     Base.metadata.create_all(engine)
@@ -57,12 +60,12 @@ def db_session(test_db):
 def sample_video_path():
     """Create a sample video file for testing."""
     import tempfile
-    from moviepy.editor import ImageClip
+    from moviepy.editor import ColorClip
     
     # Create a temporary video file
     with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp:
         # Create a simple video clip
-        clip = ImageClip(
+        clip = ColorClip(
             size=(640, 480),
             color=(255, 0, 0),  # Red background
             duration=2.0
