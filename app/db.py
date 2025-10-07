@@ -7,9 +7,9 @@ for the YouTube Auto Upload application.
 
 import logging
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Optional
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -19,8 +19,8 @@ from .models import Base, create_tables
 logger = logging.getLogger(__name__)
 
 # Global database engine and session maker
-_engine: Engine = None
-_session_maker: sessionmaker = None
+_engine: Optional[Engine] = None
+_session_maker: Optional[sessionmaker] = None
 
 
 def get_engine() -> Engine:
@@ -112,7 +112,7 @@ def check_database_connection() -> bool:
     """Check if database connection is working."""
     try:
         with get_db_session() as session:
-            session.execute("SELECT 1")
+            session.execute(text("SELECT 1"))
             return True
     except Exception as e:
         logger.error(f"Database connection check failed: {e}")
@@ -152,7 +152,7 @@ def get_database_info() -> dict:
 
 
 # Database utility functions for common operations
-def log_entry(level: str, module: str, message: str, details: str = None) -> None:
+def log_entry(level: str, module: str, message: str, details: Optional[str] = None) -> None:
     """Log an entry to the database."""
     try:
         with get_db_session() as session:
@@ -185,7 +185,7 @@ def update_system_status(**kwargs) -> None:
                 if hasattr(status, key):
                     setattr(status, key, value)
             
-            status.updated_at = datetime.utcnow()
+            # status.updated_at = datetime.utcnow()  # This will be handled by the trigger
             session.commit()
     except Exception as e:
         logger.error(f"Failed to update system status: {e}")
