@@ -63,7 +63,7 @@ class TelegramBot:
         # Start command
         @self.router.message(CommandStart())
         async def start_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied. You are not authorized to use this bot.")
                 return
             
@@ -82,7 +82,7 @@ class TelegramBot:
         # Help command
         @self.router.message(Command("help"))
         async def help_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
@@ -113,7 +113,7 @@ When videos are ready for upload, you'll receive preview messages with:
         # Start scheduler command
         @self.router.message(Command("start"))
         async def start_scheduler(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
@@ -126,7 +126,7 @@ When videos are ready for upload, you'll receive preview messages with:
         # Stop scheduler command
         @self.router.message(Command("stop"))
         async def stop_scheduler(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
@@ -139,7 +139,7 @@ When videos are ready for upload, you'll receive preview messages with:
         # Status command
         @self.router.message(Command("status"))
         async def status_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
@@ -152,13 +152,13 @@ When videos are ready for upload, you'll receive preview messages with:
         # Add target command
         @self.router.message(Command("add_target"))
         async def add_target_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
             try:
                 # Extract username from command
-                parts = message.text.split()
+                parts = (message.text or "").split()
                 if len(parts) < 2:
                     await message.reply("❌ Please provide a username: /add_target <username>")
                     return
@@ -171,12 +171,12 @@ When videos are ready for upload, you'll receive preview messages with:
         # Remove target command
         @self.router.message(Command("remove_target"))
         async def remove_target_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
             try:
-                parts = message.text.split()
+                parts = (message.text or "").split()
                 if len(parts) < 2:
                     await message.reply("❌ Please provide a username: /remove_target <username>")
                     return
@@ -189,7 +189,7 @@ When videos are ready for upload, you'll receive preview messages with:
         # List targets command
         @self.router.message(Command("list_targets"))
         async def list_targets_command(message: Message):
-            if not self._is_admin(message.from_user.id):
+            if not message.from_user or not self._is_admin(message.from_user.id):
                 await message.reply("❌ Access denied.")
                 return
             
@@ -202,7 +202,7 @@ When videos are ready for upload, you'll receive preview messages with:
         # Approval callback handlers
         @self.router.callback_query(F.data.startswith("approve_"))
         async def approve_callback(callback: CallbackQuery):
-            if not self._is_admin(callback.from_user.id):
+            if not callback.from_user or not self._is_admin(callback.from_user.id):
                 await callback.answer("❌ Access denied.", show_alert=True)
                 return
             
@@ -214,7 +214,7 @@ When videos are ready for upload, you'll receive preview messages with:
         
         @self.router.callback_query(F.data.startswith("reject_"))
         async def reject_callback(callback: CallbackQuery):
-            if not self._is_admin(callback.from_user.id):
+            if not callback.from_user or not self._is_admin(callback.from_user.id):
                 await callback.answer("❌ Access denied.", show_alert=True)
                 return
             
@@ -327,16 +327,18 @@ When videos are ready for upload, you'll receive preview messages with:
             if approved:
                 # Start upload process (this would be handled by workers)
                 await callback.answer("✅ Upload approved! Processing...", show_alert=True)
-                await callback.message.edit_text(
-                    callback.message.text + "\n\n✅ **APPROVED** by admin",
-                    parse_mode="Markdown"
-                )
+                if callback.message:
+                    await callback.message.edit_text(
+                        (callback.message.text or "") + "\n\n✅ **APPROVED** by admin",
+                        parse_mode="Markdown"
+                    )
             else:
                 await callback.answer("❌ Upload rejected.", show_alert=True)
-                await callback.message.edit_text(
-                    callback.message.text + "\n\n❌ **REJECTED** by admin",
-                    parse_mode="Markdown"
-                )
+                if callback.message:
+                    await callback.message.edit_text(
+                        (callback.message.text or "") + "\n\n❌ **REJECTED** by admin",
+                        parse_mode="Markdown"
+                    )
     
     async def send_upload_preview(self, upload: Upload, transform: Transform) -> bool:
         """Send upload preview for admin approval."""
@@ -357,8 +359,8 @@ When videos are ready for upload, you'll receive preview messages with:
             ])
             
             # Send thumbnail if available
-            if transform.thumbnail_path and Path(transform.thumbnail_path).exists():
-                photo = InputFile(transform.thumbnail_path)
+            if transform.thumbnail_path and Path(str(transform.thumbnail_path)).exists():
+                photo = InputFile(str(transform.thumbnail_path))
                 message = await self.bot.send_photo(
                     chat_id=self.admin_id,
                     photo=photo,
