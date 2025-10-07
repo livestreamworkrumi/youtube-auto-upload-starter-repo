@@ -155,9 +155,15 @@ class TestVideoTransformer:
         db_session.add(download)
         db_session.commit()
         
-        # Mock the processing methods
-        with patch.object(transformer, '_process_video') as mock_process:
+        # Mock the processing methods and database session
+        with patch.object(transformer, '_process_video') as mock_process, \
+             patch('app.transform.get_db_session') as mock_get_session:
+            
             mock_process.return_value = True
+            
+            # Mock the database session to use the test session
+            mock_get_session.return_value.__enter__.return_value = db_session
+            mock_get_session.return_value.__exit__.return_value = None
             
             result = transformer.transform_video(download)
             
