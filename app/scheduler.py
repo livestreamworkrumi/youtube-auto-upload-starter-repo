@@ -10,9 +10,12 @@ This module handles:
 
 import logging
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
-import pytz
+try:
+    import pytz
+except ImportError:
+    pytz = None  # type: ignore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -36,7 +39,11 @@ class VideoScheduler:
         self.schedule_times = self._parse_schedule_times()
         
         # Timezone setup
-        self.timezone = pytz.timezone(self.settings.timezone)
+        if pytz:
+            self.timezone = pytz.timezone(self.settings.timezone)
+        else:
+            from zoneinfo import ZoneInfo
+            self.timezone = ZoneInfo(self.settings.timezone)
     
     def _parse_schedule_times(self) -> List[str]:
         """Parse schedule times from configuration."""
@@ -145,7 +152,7 @@ class VideoScheduler:
                     "Scheduled pipeline execution"
                 )
     
-    def _get_next_run_time(self) -> datetime:
+    def _get_next_run_time(self) -> Optional[datetime]:
         """Get the next scheduled run time."""
         if not self.is_running or not self.schedule_times:
             return None
@@ -167,7 +174,11 @@ class VideoScheduler:
             if next_run is None or today_run < next_run:
                 next_run = today_run
         
-        return next_run.astimezone(pytz.UTC)
+        if pytz:
+            return next_run.astimezone(pytz.UTC)
+        else:
+            from zoneinfo import ZoneInfo
+            return next_run.astimezone(ZoneInfo('UTC'))
     
     def get_status(self) -> dict:
         """Get scheduler status information."""
