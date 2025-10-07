@@ -121,7 +121,7 @@ class Deduplicator:
         with get_db_session() as session:
             db_transform = session.query(Transform).filter_by(id=transform.id).first()
             if db_transform:
-                db_transform.status = StatusEnum.DUPLICATE
+                db_transform.status = StatusEnum.DUPLICATE  # type: ignore
                 db_transform.error_message = reason  # type: ignore
                 session.commit()
                 logger.info(f"Marked transform {transform.id} as duplicate: {reason}")
@@ -146,7 +146,7 @@ class Deduplicator:
             
             for i, transform1 in enumerate(completed_transforms):
                 for transform2 in completed_transforms[i+1:]:
-                    distance = self._phash_distance(transform1.phash, transform2.phash)
+                    distance = self._phash_distance(str(transform1.phash), str(transform2.phash))
                     if distance <= self.phash_threshold:
                         similar_pairs += 1
                         total_distance += distance
