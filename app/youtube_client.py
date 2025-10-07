@@ -175,12 +175,13 @@ class YouTubeClient:
                 # Extract video ID
                 video_id = response['id']
                 
-                # Update upload record
-                with get_db_session() as session:
-                    upload = session.query(Upload).filter_by(id=upload.id).first()
-                    upload.yt_video_id = video_id
-                    upload.status = StatusEnum.COMPLETED
-                    upload.uploaded_at = datetime.utcnow()
+            # Update upload record
+            with get_db_session() as session:
+                db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                if db_upload:
+                    db_upload.yt_video_id = video_id
+                    db_upload.status = StatusEnum.COMPLETED
+                    db_upload.uploaded_at = datetime.utcnow()
                     session.commit()
                 
                 logger.info(f"Video uploaded successfully: {video_id}")
@@ -188,10 +189,11 @@ class YouTubeClient:
             else:
                 # Mark upload as failed
                 with get_db_session() as session:
-                    upload = session.query(Upload).filter_by(id=upload.id).first()
-                    upload.status = StatusEnum.FAILED
-                    upload.error_message = "Upload failed after retries"
-                    session.commit()
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.status = StatusEnum.FAILED
+                        db_upload.error_message = "Upload failed after retries"
+                        session.commit()
                 
                 logger.error(f"Video upload failed for transform {transform.id}")
                 return None
@@ -202,10 +204,10 @@ class YouTubeClient:
             # Update upload record with error
             try:
                 with get_db_session() as session:
-                    upload = session.query(Upload).filter_by(id=upload.id).first()
-                    if upload:
-                        upload.status = StatusEnum.FAILED
-                        upload.error_message = str(e)
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.status = StatusEnum.FAILED
+                        db_upload.error_message = str(e)
                         session.commit()
             except:
                 pass
