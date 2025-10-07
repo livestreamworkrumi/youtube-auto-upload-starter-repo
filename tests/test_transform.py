@@ -133,11 +133,14 @@ class TestVideoTransformer:
     
     def test_process_video_demo_mode(self, transformer, db_session):
         """Test video processing in demo mode."""
+        import time
+        
         # Mock demo mode
         transformer.settings.demo_mode = True
         
-        # Create mock download and save to database
-        target = InstagramTarget(username="test_user", is_active=True)
+        # Create mock download and save to database with unique username
+        unique_username = f"test_user_transform_{int(time.time() * 1000)}"
+        target = InstagramTarget(username=unique_username, is_active=True)
         download = Download(
             target=target,
             ig_post_id="test_post",
