@@ -158,7 +158,8 @@ When videos are ready for upload, you'll receive preview messages with:
             
             try:
                 # Extract username from command
-                parts = (message.text or "").split()
+                text = message.text or ""
+                parts = text.split()
                 if len(parts) < 2:
                     await message.reply("❌ Please provide a username: /add_target <username>")
                     return
@@ -176,7 +177,8 @@ When videos are ready for upload, you'll receive preview messages with:
                 return
             
             try:
-                parts = (message.text or "").split()
+                text = message.text or ""
+                parts = text.split()
                 if len(parts) < 2:
                     await message.reply("❌ Please provide a username: /remove_target <username>")
                     return
@@ -316,8 +318,8 @@ When videos are ready for upload, you'll receive preview messages with:
             approval = session.query(Approval).filter_by(upload_id=upload_id).first()
             if approval:
                 approval.status = StatusEnum.COMPLETED if approved else StatusEnum.REJECTED
-                approval.approved_by = str(callback.from_user.id)
-                approval.approved_at = datetime.utcnow()
+                approval.approved_by = str(callback.from_user.id)  # type: ignore
+                approval.approved_at = datetime.utcnow()  # type: ignore
                 session.commit()
             
             # Update upload status
@@ -360,7 +362,8 @@ When videos are ready for upload, you'll receive preview messages with:
             
             # Send thumbnail if available
             if transform.thumbnail_path and Path(str(transform.thumbnail_path)).exists():
-                photo = InputFile(str(transform.thumbnail_path))
+                from aiogram.types import BufferedInputFile
+                photo = BufferedInputFile.from_file(str(transform.thumbnail_path))
                 message = await self.bot.send_photo(
                     chat_id=self.admin_id,
                     photo=photo,
