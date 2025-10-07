@@ -194,12 +194,15 @@ class VideoScheduler:
                     "trigger": str(job.trigger)
                 })
         
+        next_run_time = self._get_next_run_time()
+        next_run_str = next_run_time.isoformat() if next_run_time is not None else None  # type: ignore
+        
         return {
             "running": self.is_running,
             "timezone": self.settings.timezone,
             "schedule_times": self.schedule_times,
             "jobs": jobs,
-            "next_run": (self._get_next_run_time().isoformat() if self._get_next_run_time() is not None else None),
+            "next_run": next_run_str,
             "demo_mode": self.is_demo_mode()
         }
     
