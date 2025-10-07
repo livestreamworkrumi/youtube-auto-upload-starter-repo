@@ -55,7 +55,7 @@ class Deduplicator:
         with get_db_session() as session:
             # Get all completed transforms with pHash
             existing_transforms = session.query(Transform).filter(
-                Transform.id != transform.id,
+                Transform.id != transform.id,  # type: ignore
                 Transform.phash.isnot(None),
                 Transform.status == StatusEnum.COMPLETED
             ).all()
@@ -122,7 +122,7 @@ class Deduplicator:
             db_transform = session.query(Transform).filter_by(id=transform.id).first()
             if db_transform:
                 db_transform.status = StatusEnum.DUPLICATE
-                db_transform.error_message = reason
+                db_transform.error_message = reason  # type: ignore
                 session.commit()
                 logger.info(f"Marked transform {transform.id} as duplicate: {reason}")
     
@@ -137,7 +137,7 @@ class Deduplicator:
             
             # Calculate average pHash distance for similar content
             completed_transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
@@ -173,14 +173,14 @@ class Deduplicator:
         with get_db_session() as session:
             # Get all completed transforms that haven't been checked for duplicates
             transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
             for transform in transforms:
                 is_duplicate, reason = self.check_duplicate_transform(transform)
                 if is_duplicate:
-                    self.mark_duplicate_transform(transform, reason)
+                    self.mark_duplicate_transform(transform, reason or "Duplicate found")
                     duplicates.append(transform)
         
         logger.info(f"Found {len(duplicates)} duplicate transforms")
@@ -194,7 +194,7 @@ class Deduplicator:
         """
         with get_db_session() as session:
             transforms = session.query(Transform).filter(
-                Transform.status == StatusEnum.COMPLETED,
+                Transform.status == StatusEnum.COMPLETED,  # type: ignore
                 Transform.phash.isnot(None)
             ).all()
             
@@ -202,7 +202,7 @@ class Deduplicator:
             seen_phashes: Set[str] = set()
             
             for transform in transforms:
-                if transform.phash not in seen_phashes:
+                if str(transform.phash) not in seen_phashes:
                     # Check if this pHash is similar to any we've already seen
                     is_similar = False
                     for seen_phash in seen_phashes:
@@ -212,7 +212,7 @@ class Deduplicator:
                     
                     if not is_similar:
                         unique_transforms.append(transform)
-                        seen_phashes.add(transform.phash)
+                        seen_phashes.add(str(transform.phash))
             
             logger.info(f"Found {len(unique_transforms)} unique transforms for upload")
             return unique_transforms
