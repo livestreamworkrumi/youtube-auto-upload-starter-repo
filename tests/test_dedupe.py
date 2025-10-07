@@ -230,6 +230,12 @@ class TestDedupeIntegration:
             caption="Test caption"
         )
         
+        # Save target and download first to get IDs
+        db_session.add(target)
+        db_session.add(download)
+        db_session.commit()
+        
+        # Now create transform with the download ID
         transform = Transform(
             download_id=download.id,
             input_path="test_video.mp4",
@@ -239,8 +245,6 @@ class TestDedupeIntegration:
             status="COMPLETED"
         )
         
-        db_session.add(target)
-        db_session.add(download)
         db_session.add(transform)
         db_session.commit()
         
