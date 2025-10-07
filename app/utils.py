@@ -227,9 +227,8 @@ def format_file_size(size_bytes: int) -> str:
     while size_float >= 1024 and i < len(size_names) - 1:
         size_float = size_float / 1024.0
         i += 1
-    size_bytes = size_float
-    
-    return f"{size_bytes:.1f} {size_names[i]}"
+    # Convert back to int for return formatting
+    return f"{size_float:.1f} {size_names[i]}"
 
 
 def format_duration(seconds: int) -> str:
