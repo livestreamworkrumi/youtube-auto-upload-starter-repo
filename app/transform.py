@@ -395,6 +395,25 @@ def transform_all_pending() -> list:
     return transforms
 
 
+def create_mock_video() -> VideoFileClip:
+    """Create a mock video for testing purposes."""
+    try:
+        # Create a simple colored clip for testing
+        return ImageClip(
+            size=(640, 480),
+            color=(255, 0, 0),  # Red background
+            duration=5.0
+        )
+    except Exception as e:
+        logger.error(f"Error creating mock video: {e}")
+        # Return a minimal clip
+        return ImageClip(
+            size=(100, 100),
+            color=(0, 0, 0),
+            duration=1.0
+        )
+
+
 if __name__ == "__main__":
     # Allow running this module directly for testing
     transformer = create_transformer()
