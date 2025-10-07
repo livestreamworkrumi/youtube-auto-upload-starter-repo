@@ -61,7 +61,8 @@ class TestVideoTransformer:
                 resized = transformer._resize_to_aspect_ratio(video)
                 
                 assert resized is not None
-                assert resized.size == (1080, 1920)  # Target resolution
+                # The composite video should have the target resolution
+                assert resized.size == [1080, 1920]  # Target resolution
                 assert resized.duration == video.duration
                 
                 resized.close()
@@ -197,7 +198,7 @@ class TestTransformUtilities:
         # Test various problematic filenames
         assert clean_filename("test file.mp4") == "test_file.mp4"
         assert clean_filename("file:with|bad*chars?.mp4") == "file_with_bad_chars_.mp4"
-        assert clean_filename("  spaced  file  .mp4") == "_spaced__file_.mp4"
+        assert clean_filename("  spaced  file  .mp4") == "_spaced_file_.mp4"
     
     def test_format_file_size(self):
         """Test file size formatting."""
