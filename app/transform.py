@@ -19,7 +19,7 @@ import imagehash
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
     CompositeVideoClip, ImageClip, TextClip, VideoFileClip, 
-    concatenate_videoclips
+    concatenate_videoclips, ColorClip
 )
 
 from .config import get_settings
@@ -207,7 +207,7 @@ class VideoTransformer:
             video_resized = video.resize((new_w, new_h))
             
             # Create background clip with target dimensions
-            background = ImageClip(
+            background = ColorClip(
                 size=(target_w, target_h),
                 color=(0, 0, 0),  # Black background
                 duration=video_resized.duration
@@ -399,7 +399,7 @@ def create_mock_video() -> VideoFileClip:
     """Create a mock video for testing purposes."""
     try:
         # Create a simple colored clip for testing
-        return ImageClip(
+        return ColorClip(
             size=(640, 480),
             color=(255, 0, 0),  # Red background
             duration=5.0
@@ -407,7 +407,7 @@ def create_mock_video() -> VideoFileClip:
     except Exception as e:
         logger.error(f"Error creating mock video: {e}")
         # Return a minimal clip
-        return ImageClip(
+        return ColorClip(
             size=(100, 100),
             color=(0, 0, 0),
             duration=1.0
