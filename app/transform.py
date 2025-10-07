@@ -78,11 +78,11 @@ class VideoTransformer:
             
             # Process the video
             success = self._process_video(
-                input_path=download.local_path,
+                input_path=str(download.local_path),
                 output_path=output_path,
                 thumbnail_path=thumbnail_path,
                 ig_username=download.target.username,
-                ig_shortcode=download.ig_shortcode
+                ig_shortcode=str(download.ig_shortcode)
             )
             
             if success:
@@ -91,22 +91,24 @@ class VideoTransformer:
                 
                 # Update transform record
                 with get_db_session() as session:
-                    transform = session.query(Transform).filter_by(id=transform.id).first()
-                    transform.output_path = str(output_path)
-                    transform.thumbnail_path = str(thumbnail_path)
-                    transform.phash = phash
-                    transform.status = StatusEnum.COMPLETED
-                    session.commit()
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.output_path = str(output_path)
+                        db_transform.thumbnail_path = str(thumbnail_path)
+                        db_transform.phash = phash
+                        db_transform.status = StatusEnum.COMPLETED
+                        session.commit()
                 
                 logger.info(f"Transformation completed for download {download.id}")
                 return transform
             else:
                 # Mark as failed
                 with get_db_session() as session:
-                    transform = session.query(Transform).filter_by(id=transform.id).first()
-                    transform.status = StatusEnum.FAILED
-                    transform.error_message = "Video processing failed"
-                    session.commit()
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.status = StatusEnum.FAILED
+                        db_transform.error_message = "Video processing failed"
+                        session.commit()
                 
                 logger.error(f"Transformation failed for download {download.id}")
                 return None
@@ -117,10 +119,10 @@ class VideoTransformer:
             # Update transform record with error
             try:
                 with get_db_session() as session:
-                    transform = session.query(Transform).filter_by(id=transform.id).first()
-                    if transform:
-                        transform.status = StatusEnum.FAILED
-                        transform.error_message = str(e)
+                    db_transform = session.query(Transform).filter_by(id=transform.id).first()
+                    if db_transform:
+                        db_transform.status = StatusEnum.FAILED
+                        db_transform.error_message = str(e)
                         session.commit()
             except:
                 pass
