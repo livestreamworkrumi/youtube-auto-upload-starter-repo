@@ -227,8 +227,7 @@ class TestDedupeIntegration:
             permission_proof_path="test_proof.txt",
             file_size=1024,
             duration_seconds=30,
-            caption="Test caption",
-            status="COMPLETED"
+            caption="Test caption"
         )
         
         transform = Transform(
