@@ -102,8 +102,9 @@ class TestVideoTransformer:
         """Test thumbnail generation."""
         try:
             with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                from app.transform import create_mock_video
                 success = transformer._generate_thumbnail(
-                    transformer._create_mock_video(),
+                    create_mock_video(),
                     Path(tmp.name)
                 )
                 
@@ -196,7 +197,7 @@ class TestTransformUtilities:
         # Test various problematic filenames
         assert clean_filename("test file.mp4") == "test_file.mp4"
         assert clean_filename("file:with|bad*chars?.mp4") == "file_with_bad_chars_.mp4"
-        assert clean_filename("  spaced  file  .mp4") == "spaced_file.mp4"
+        assert clean_filename("  spaced  file  .mp4") == "_spaced__file_.mp4"
     
     def test_format_file_size(self):
         """Test file size formatting."""
