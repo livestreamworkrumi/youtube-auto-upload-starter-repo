@@ -175,14 +175,14 @@ class YouTubeClient:
                 # Extract video ID
                 video_id = response['id']
                 
-            # Update upload record
-            with get_db_session() as session:
-                db_upload = session.query(Upload).filter_by(id=upload.id).first()
-                if db_upload:
-                    db_upload.yt_video_id = video_id
-                    db_upload.status = StatusEnum.COMPLETED
-                    db_upload.uploaded_at = datetime.utcnow()
-                    session.commit()
+                # Update upload record
+                with get_db_session() as session:
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.yt_video_id = video_id
+                        db_upload.status = StatusEnum.COMPLETED
+                        db_upload.uploaded_at = datetime.utcnow()
+                        session.commit()
                 
                 logger.info(f"Video uploaded successfully: {video_id}")
                 return upload
