@@ -141,11 +141,13 @@ class TestVideoTransformer:
         # Create mock download and save to database with unique username
         unique_username = f"test_user_transform_{int(time.time() * 1000)}"
         target = InstagramTarget(username=unique_username, is_active=True)
+        # Create unique post ID to avoid constraint violations
+        unique_post_id = f"test_post_transform_{int(time.time() * 1000)}"
         download = Download(
             target=target,
-            ig_post_id="test_post",
-            ig_shortcode="test_post",
-            source_url="https://instagram.com/p/test_post",
+            ig_post_id=unique_post_id,
+            ig_shortcode=unique_post_id,
+            source_url=f"https://instagram.com/p/{unique_post_id}",
             local_path="test_video.mp4",
             permission_proof_path="test_proof.txt",
             file_size=1024,
