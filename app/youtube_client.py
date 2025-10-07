@@ -1,426 +1,428 @@
 """
-Utility functions for the YouTube Auto Upload application.
+YouTube upload client with OAuth authentication and resumable uploads.
 
-This module provides helper functions for:
-- SEO title and description generation
-- Thumbnail generation
-- File operations
-- Text processing
+This module handles:
+- OAuth 2.0 authentication flow
+- Resumable video uploads to YouTube
+- Video metadata management
+- Error handling and retry logic
 """
 
-import hashlib
+import json
 import logging
-import re
+import os
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from PIL import Image
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from googleapiclient.http import MediaFileUpload
 
 from .config import get_settings
-from .models import Download, Transform
+from .db import get_db_session
+from .models import Transform, Upload, StatusEnum
 
 logger = logging.getLogger(__name__)
 
+# YouTube API scopes
+SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-def generate_seo_title(download: Download) -> str:
-    """Generate SEO-optimized title for YouTube video.
+
+class YouTubeClient:
+    """YouTube upload client with OAuth and resumable uploads."""
     
-    Args:
-        download: Download record with metadata
+    def __init__(self):
+        self.settings = get_settings()
+        self.service = None
+        self.credentials = None
         
-    Returns:
-        SEO-optimized title
-    """
-    try:
-        # Base title components
-        username = download.target.username
-        base_title = f"@{username}"
+        # Upload settings
+        self.chunk_size = self.settings.youtube_upload_chunk_size
+        self.max_retries = self.settings.youtube_max_retry_attempts
         
-        # Extract keywords from caption if available
-        keywords: List[str] = []
-        if download.caption:
-            # Clean and extract potential keywords
-            clean_caption = re.sub(r'[^\w\s]', ' ', download.caption.lower())
-            words = clean_caption.split()
-            
-            # Filter for meaningful words (length > 3, not common words)
-            common_words = {'this', 'that', 'with', 'have', 'will', 'from', 'they', 'know', 'want', 'been', 'good', 'much', 'some', 'time', 'very', 'when', 'come', 'here', 'just', 'like', 'long', 'make', 'many', 'over', 'such', 'take', 'than', 'them', 'well', 'were'}
-            
-            for word in words:
-                if len(word) > 3 and word not in common_words and len(keywords) < 5:
-                    keywords.append(word.title())
-        
-        # Build title
-        if keywords:
-            title = f"{base_title} - {' '.join(keywords[:3])}"
-        else:
-            title = f"{base_title} - Amazing Content"
-        
-        # Ensure title is not too long (YouTube limit is 100 chars)
-        if len(title) > 90:
-            title = title[:87] + "..."
-        
-        return title
-        
-    except Exception as e:
-        logger.error(f"Error generating SEO title: {e}")
-        return f"@{download.target.username} - Viral Content"
-
-
-def generate_seo_description(download: Download, transform: Transform) -> str:
-    """Generate SEO-optimized description for YouTube video.
+    def is_demo_mode(self) -> bool:
+        """Check if running in demo mode."""
+        return self.settings.demo_mode
     
-    Args:
-        download: Download record with metadata
-        transform: Transform record with video info
+    def authenticate(self) -> bool:
+        """Authenticate with YouTube API.
         
-    Returns:
-        SEO-optimized description
-    """
-    try:
-        username = download.target.username
-        original_url = download.source_url
-        proof_path = download.permission_proof_path
+        Returns:
+            True if authentication successful, False otherwise
+        """
+        if self.is_demo_mode():
+            logger.info("Demo mode: skipping YouTube authentication")
+            return True
         
-        # Base description
-        description_parts = [
-            f"🎬 Original Creator: @{username}",
-            f"🔗 Original Post: {original_url}",
-            "",
-            "📄 Permission Proof:",
-            f"Content downloaded from public Instagram account with permission.",
-            f"Proof stored at: {proof_path}",
-            "",
-            "📝 About this video:",
-            "This content was shared from a public Instagram account and is",
-            "available for public viewing. All credits go to the original creator.",
-            "",
-            "🎯 Follow for more viral content!",
-            "👍 Like if you enjoyed this video!",
-            "🔔 Subscribe for daily uploads!",
-            "",
-            "#Shorts #Viral #Instagram #Trending #Content"
-        ]
-        
-        # Add original caption if available and not too long
-        if download.caption and len(download.caption) < 200:
-            description_parts.insert(-6, "")
-            description_parts.insert(-6, f"📝 Original caption: {download.caption}")
-        
-        # Add channel branding
-        settings = get_settings()
-        description_parts.extend([
-            "",
-            f"📺 Channel: {settings.channel_title}",
-            "🎬 Curated viral content from Instagram",
-            "⚡ Daily uploads at 8AM, 12PM, 4PM (Pakistan time)"
-        ])
-        
-        description = "\n".join(description_parts)
-        
-        # Ensure description is not too long (YouTube limit is 5000 chars)
-        if len(description) > 4900:
-            description = description[:4897] + "..."
-        
-        return description
-        
-    except Exception as e:
-        logger.error(f"Error generating SEO description: {e}")
-        return f"Original Creator: @{download.target.username}\nOriginal Post: {download.source_url}\n\nPermission granted from public Instagram account.\n\n#Shorts #Viral #Instagram"
-
-
-def generate_thumbnail_from_video(video_path: str, output_path: str, timestamp: float = 1.0) -> bool:
-    """Generate thumbnail from video at specified timestamp.
-    
-    Args:
-        video_path: Path to input video file
-        output_path: Path for output thumbnail
-        timestamp: Time in seconds to extract frame
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        from moviepy.editor import VideoFileClip
-        
-        with VideoFileClip(video_path) as video:
-            # Ensure timestamp is within video duration
-            if timestamp >= video.duration:
-                timestamp = video.duration / 2
+        try:
+            # Load existing credentials
+            token_path = Path(self.settings.token_file)
+            credentials = None
             
-            # Save frame as image
-            video.save_frame(output_path, t=timestamp)
+            if token_path.exists():
+                credentials = Credentials.from_authorized_user_file(str(token_path), SCOPES)
             
-            # Resize thumbnail to standard size
-            with Image.open(output_path) as img:
-                # Resize to 9:16 aspect ratio (480x854)
-                img_resized = img.resize((480, 854), Image.Resampling.LANCZOS)
-                img_resized.save(output_path, 'JPEG', quality=85)
+            # If there are no valid credentials, authenticate
+            if not credentials or not credentials.valid:
+                if credentials and credentials.expired and credentials.refresh_token:
+                    credentials.refresh(Request())
+                else:
+                    client_secrets_path = Path(self.settings.youtube_client_secrets)
+                    if not client_secrets_path.exists():
+                        logger.error(f"Client secrets file not found: {client_secrets_path}")
+                        return False
+                    
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        str(client_secrets_path), SCOPES
+                    )
+                    credentials = flow.run_local_server(port=0)
+                
+                # Save credentials for next run
+                with open(token_path, 'w') as token:
+                    token.write(credentials.to_json())
             
+            self.credentials = credentials
+            
+            # Build YouTube service
+            self.service = build('youtube', 'v3', credentials=credentials)
+            
+            logger.info("YouTube authentication successful")
             return True
             
-    except Exception as e:
-        logger.error(f"Error generating thumbnail: {e}")
-        return False
-
-
-def compute_file_hash(file_path: str) -> Optional[str]:
-    """Compute MD5 hash of a file.
+        except Exception as e:
+            logger.error(f"YouTube authentication failed: {e}")
+            return False
     
-    Args:
-        file_path: Path to file
+    def upload_video(
+        self, 
+        transform: Transform, 
+        title: str, 
+        description: str, 
+        tags: List[str]
+    ) -> Optional[Upload]:
+        """Upload a transformed video to YouTube.
         
-    Returns:
-        MD5 hash string or None if failed
-    """
-    try:
-        hash_md5 = hashlib.md5()
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+        Args:
+            transform: Transform record containing video path
+            title: Video title
+            description: Video description
+            tags: List of video tags
+            
+        Returns:
+            Upload record or None if failed
+        """
+        if self.is_demo_mode():
+            return self._demo_upload(transform, title, description, tags)
         
-    except Exception as e:
-        logger.error(f"Error computing file hash: {e}")
-        return None
-
-
-def clean_filename(filename: str) -> str:
-    """Clean filename for safe storage.
-    
-    Args:
-        filename: Original filename
+        if not self.service:
+            if not self.authenticate():
+                logger.error("YouTube service not available")
+                return None
         
-    Returns:
-        Cleaned filename
-    """
-    # Remove or replace invalid characters
-    cleaned = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    
-    # Remove extra spaces and dots
-    cleaned = re.sub(r'\s+', '_', cleaned)
-    cleaned = re.sub(r'\.+', '.', cleaned)
-    
-    # Ensure filename is not too long
-    if len(cleaned) > 200:
-        name, ext = Path(cleaned).stem, Path(cleaned).suffix
-        cleaned = name[:200-len(ext)] + ext
-    
-    return cleaned
-
-
-def format_file_size(size_bytes: int) -> str:
-    """Format file size in human-readable format.
-    
-    Args:
-        size_bytes: Size in bytes
-        
-    Returns:
-        Formatted size string
-    """
-    if size_bytes == 0:
-        return "0 B"
-    
-    size_names = ["B", "KB", "MB", "GB", "TB"]
-    i = 0
-    size_float = float(size_bytes)
-    while size_float >= 1024 and i < len(size_names) - 1:
-        size_float = size_float / 1024.0
-        i += 1
-    # Convert back to int for return formatting
-    return f"{size_float:.1f} {size_names[i]}"
-
-
-def format_duration(seconds: int) -> str:
-    """Format duration in human-readable format.
-    
-    Args:
-        seconds: Duration in seconds
-        
-    Returns:
-        Formatted duration string
-    """
-    if seconds < 60:
-        return f"{seconds}s"
-    elif seconds < 3600:
-        minutes = seconds // 60
-        remaining_seconds = seconds % 60
-        return f"{minutes}m {remaining_seconds}s"
-    else:
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        remaining_seconds = seconds % 60
-        return f"{hours}h {minutes}m {remaining_seconds}s"
-
-
-def extract_hashtags(text: str) -> List[str]:
-    """Extract hashtags from text.
-    
-    Args:
-        text: Input text
-        
-    Returns:
-        List of hashtags (without # symbol)
-    """
-    if not text:
-        return []
-    
-    hashtag_pattern = r'#(\w+)'
-    hashtags = re.findall(hashtag_pattern, text, re.IGNORECASE)
-    
-    return [tag.lower() for tag in hashtags]
-
-
-def remove_hashtags(text: str) -> str:
-    """Remove hashtags from text.
-    
-    Args:
-        text: Input text
-        
-    Returns:
-        Text without hashtags
-    """
-    if not text:
-        return ""
-    
-    hashtag_pattern = r'#\w+\s*'
-    return re.sub(hashtag_pattern, '', text).strip()
-
-
-def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
-    """Truncate text to maximum length.
-    
-    Args:
-        text: Input text
-        max_length: Maximum length
-        suffix: Suffix to add if truncated
-        
-    Returns:
-        Truncated text
-    """
-    if not text or len(text) <= max_length:
-        return text
-    
-    return text[:max_length - len(suffix)] + suffix
-
-
-def is_valid_instagram_username(username: str) -> bool:
-    """Validate Instagram username format.
-    
-    Args:
-        username: Username to validate
-        
-    Returns:
-        True if valid, False otherwise
-    """
-    if not username:
-        return False
-    
-    # Remove @ symbol if present
-    username = username.replace('@', '')
-    
-    # Instagram username rules:
-    # - 1-30 characters
-    # - Only letters, numbers, periods, underscores
-    # - Cannot start or end with period
-    # - Cannot have consecutive periods
-    if len(username) < 1 or len(username) > 30:
-        return False
-    
-    if not re.match(r'^[a-zA-Z0-9._]+$', username):
-        return False
-    
-    if username.startswith('.') or username.endswith('.'):
-        return False
-    
-    if '..' in username:
-        return False
-    
-    return True
-
-
-def get_file_extension(filename: str) -> str:
-    """Get file extension from filename.
-    
-    Args:
-        filename: Filename
-        
-    Returns:
-        File extension (without dot)
-    """
-    return Path(filename).suffix.lstrip('.').lower()
-
-
-def ensure_directory(path: str) -> bool:
-    """Ensure directory exists.
-    
-    Args:
-        path: Directory path
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        Path(path).mkdir(parents=True, exist_ok=True)
-        return True
-    except Exception as e:
-        logger.error(f"Error creating directory {path}: {e}")
-        return False
-
-
-def get_video_info(video_path: str) -> dict:
-    """Get basic video information.
-    
-    Args:
-        video_path: Path to video file
-        
-    Returns:
-        Dictionary with video info
-    """
-    try:
-        from moviepy.editor import VideoFileClip
-        
-        with VideoFileClip(video_path) as video:
-            return {
-                "duration": video.duration,
-                "fps": video.fps,
-                "size": video.size,
-                "has_audio": video.audio is not None
+        try:
+            # Create upload record
+            with get_db_session() as session:
+                upload = Upload(
+                    transform_id=transform.id,
+                    title=title,
+                    description=description,
+                    tags=json.dumps(tags) if tags else None,
+                    status=StatusEnum.IN_PROGRESS
+                )
+                session.add(upload)
+                session.commit()
+                session.refresh(upload)
+            
+            # Prepare video metadata
+            body = {
+                'snippet': {
+                    'title': title,
+                    'description': description,
+                    'tags': tags,
+                    'categoryId': '22',  # People & Blogs category
+                    'defaultLanguage': 'en',
+                    'defaultAudioLanguage': 'en'
+                },
+                'status': {
+                    'privacyStatus': 'private',  # Upload as private initially
+                    'selfDeclaredMadeForKids': False
+                }
             }
             
-    except Exception as e:
-        logger.error(f"Error getting video info: {e}")
-        return {}
+            # Create media upload object
+            media = MediaFileUpload(
+                transform.output_path,
+                chunksize=self.chunk_size,
+                resumable=True
+            )
+            
+            # Start upload
+            insert_request = self.service.videos().insert(
+                part=','.join(body.keys()),
+                body=body,
+                media_body=media
+            )
+            
+            # Execute upload with retry logic
+            response = self._resumable_upload(insert_request)
+            
+            if response:
+                # Extract video ID
+                video_id = response['id']
+                
+                # Update upload record
+                with get_db_session() as session:
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.yt_video_id = video_id
+                        db_upload.status = StatusEnum.COMPLETED  # type: ignore
+                        db_upload.uploaded_at = datetime.utcnow()  # type: ignore
+                        session.commit()
+                
+                logger.info(f"Video uploaded successfully: {video_id}")
+                return upload
+            else:
+                # Mark upload as failed
+                with get_db_session() as session:
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.status = StatusEnum.FAILED  # type: ignore
+                        db_upload.error_message = "Upload failed after retries"  # type: ignore
+                        session.commit()
+                
+                logger.error(f"Video upload failed for transform {transform.id}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"YouTube upload error: {e}")
+            
+            # Update upload record with error
+            try:
+                with get_db_session() as session:
+                    db_upload = session.query(Upload).filter_by(id=upload.id).first()
+                    if db_upload:
+                        db_upload.status = StatusEnum.FAILED  # type: ignore
+                        db_upload.error_message = str(e)  # type: ignore
+                        session.commit()
+            except:
+                pass
+            
+            return None
+    
+    def _resumable_upload(self, insert_request) -> Optional[Dict]:
+        """Execute resumable upload with retry logic."""
+        response = None
+        error = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                status, response = insert_request.next_chunk()
+                if response is not None:
+                    if 'id' in response:
+                        return response
+                    else:
+                        raise HttpError(resp=None, content=f"Upload failed: {response}")
+                else:
+                    logger.info(f"Upload progress: {status.progress() * 100:.1f}%")
+                    
+            except HttpError as e:
+                error = e
+                if e.resp.status in [500, 502, 503, 504]:
+                    # Retry on server errors
+                    logger.warning(f"Server error during upload (attempt {attempt + 1}): {e}")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    # Don't retry on client errors
+                    logger.error(f"Client error during upload: {e}")
+                    break
+            except Exception as e:
+                error = e
+                logger.error(f"Unexpected error during upload (attempt {attempt + 1}): {e}")
+                time.sleep(2 ** attempt)
+        
+        logger.error(f"Upload failed after {self.max_retries} attempts: {error}")
+        return None
+    
+    def _demo_upload(
+        self, 
+        transform: Transform, 
+        title: str, 
+        description: str, 
+        tags: List[str]
+    ) -> Optional[Upload]:
+        """Demo mode upload simulation."""
+        logger.info(f"Demo mode: simulating upload of {title}")
+        
+        try:
+            # Simulate upload delay
+            time.sleep(1)
+            
+            # Create upload record
+            with get_db_session() as session:
+                upload = Upload(
+                    transform_id=transform.id,
+                    yt_video_id=f"demo_{transform.id}_{int(time.time())}",
+                    title=title,
+                    description=description,
+                    tags=json.dumps(tags) if tags else None,
+                    status=StatusEnum.COMPLETED,
+                    uploaded_at=datetime.utcnow()
+                )
+                session.add(upload)
+                session.commit()
+                session.refresh(upload)
+            
+            logger.info(f"Demo upload completed: {upload.yt_video_id}")
+            return upload
+            
+        except Exception as e:
+            logger.error(f"Demo upload error: {e}")
+            return None
+    
+    def update_video_privacy(self, video_id: str, privacy_status: str = 'public') -> bool:
+        """Update video privacy status.
+        
+        Args:
+            video_id: YouTube video ID
+            privacy_status: 'public', 'private', or 'unlisted'
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.is_demo_mode():
+            logger.info(f"Demo mode: simulating privacy update for {video_id} to {privacy_status}")
+            return True
+        
+        if not self.service:
+            logger.error("YouTube service not available")
+            return False
+        
+        try:
+            body = {
+                'id': video_id,
+                'status': {
+                    'privacyStatus': privacy_status
+                }
+            }
+            
+            response = self.service.videos().update(
+                part='status',
+                body=body
+            ).execute()
+            
+            logger.info(f"Video {video_id} privacy updated to {privacy_status}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update video privacy: {e}")
+            return False
+    
+    def get_channel_info(self) -> Optional[Dict]:
+        """Get YouTube channel information.
+        
+        Returns:
+            Channel info dictionary or None if failed
+        """
+        if self.is_demo_mode():
+            return {
+                "id": "demo_channel",
+                "title": self.settings.channel_title,
+                "description": "Demo YouTube channel",
+                "subscriberCount": "1000",
+                "videoCount": "50"
+            }
+        
+        if not self.service:
+            logger.error("YouTube service not available")
+            return None
+        
+        try:
+            response = self.service.channels().list(
+                part='snippet,statistics',
+                mine=True
+            ).execute()
+            
+            if response['items']:
+                channel = response['items'][0]
+                return {
+                    "id": channel['id'],
+                    "title": channel['snippet']['title'],
+                    "description": channel['snippet']['description'],
+                    "subscriberCount": channel['statistics'].get('subscriberCount', '0'),
+                    "videoCount": channel['statistics'].get('videoCount', '0')
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get channel info: {e}")
+            return None
+    
+    def get_upload_stats(self) -> Dict:
+        """Get upload statistics."""
+        with get_db_session() as session:
+            total_uploads = session.query(Upload).count()
+            completed_uploads = session.query(Upload).filter_by(
+                status=StatusEnum.COMPLETED
+            ).count()
+            failed_uploads = session.query(Upload).filter_by(
+                status=StatusEnum.FAILED
+            ).count()
+            
+            return {
+                "total_uploads": total_uploads,
+                "completed_uploads": completed_uploads,
+                "failed_uploads": failed_uploads,
+                "demo_mode": self.is_demo_mode(),
+                "authenticated": self.service is not None or self.is_demo_mode(),
+            }
+
+
+def create_youtube_client() -> YouTubeClient:
+    """Create and return a YouTube client instance."""
+    client = YouTubeClient()
+    if not client.is_demo_mode():
+        client.authenticate()
+    return client
+
+
+def upload_transform_video(
+    transform: Transform, 
+    title: str, 
+    description: str, 
+    tags: List[str]
+) -> Optional[Upload]:
+    """Upload a transformed video to YouTube."""
+    client = create_youtube_client()
+    return client.upload_video(transform, title, description, tags)
+
+
+def get_channel_info() -> Optional[Dict]:
+    """Get YouTube channel information."""
+    client = create_youtube_client()
+    return client.get_channel_info()
 
 
 if __name__ == "__main__":
-    # Test utility functions
-    print("Testing utility functions...")
+    # Allow running this module directly for testing
+    client = create_youtube_client()
     
-    # Test filename cleaning
-    test_filename = "test file with spaces & symbols!.mp4"
-    cleaned = clean_filename(test_filename)
-    print(f"Cleaned filename: {cleaned}")
+    if client.is_demo_mode():
+        print("Running in demo mode")
+        channel_info = client.get_channel_info()
+        print(f"Demo channel info: {channel_info}")
+    else:
+        print("Running in real mode")
+        if client.authenticate():
+            channel_info = client.get_channel_info()
+            print(f"Channel info: {channel_info}")
+        else:
+            print("Authentication failed")
     
-    # Test file size formatting
-    test_size = 1024 * 1024 * 5  # 5MB
-    formatted_size = format_file_size(test_size)
-    print(f"Formatted size: {formatted_size}")
-    
-    # Test duration formatting
-    test_duration = 3661  # 1h 1m 1s
-    formatted_duration = format_duration(test_duration)
-    print(f"Formatted duration: {formatted_duration}")
-    
-    # Test hashtag extraction
-    test_text = "This is a #test with #multiple #hashtags and #more"
-    hashtags = extract_hashtags(test_text)
-    print(f"Extracted hashtags: {hashtags}")
-    
-    # Test Instagram username validation
-    test_usernames = ["valid_username", "@valid_username", "invalid..username", "too_long_username_that_exceeds_limit"]
-    for username in test_usernames:
-        is_valid = is_valid_instagram_username(username)
-        print(f"Username '{username}' is valid: {is_valid}")
-    
-    print("Utility function tests completed")
+    stats = client.get_upload_stats()
+    print(f"Upload stats: {stats}")
