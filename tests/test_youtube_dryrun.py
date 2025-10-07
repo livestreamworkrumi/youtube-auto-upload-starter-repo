@@ -68,12 +68,23 @@ class TestYouTubeClient:
     
     @patch('app.youtube_client.Credentials')
     @patch('app.youtube_client.InstalledAppFlow')
-    def test_authenticate_success(self, mock_flow_class, mock_credentials_class, youtube_client):
+    @patch('app.youtube_client.Path')
+    def test_authenticate_success(self, mock_path_class, mock_flow_class, mock_credentials_class, youtube_client):
         """Test successful authentication."""
+        # Mock Path.exists() to return True
+        mock_path = Mock()
+        mock_path.exists.return_value = True
+        mock_path_class.return_value = mock_path
+        
         # Mock credentials
         mock_credentials = Mock()
         mock_credentials.valid = True
         mock_credentials_class.from_authorized_user_file.return_value = mock_credentials
+        
+        # Mock flow
+        mock_flow = Mock()
+        mock_flow.run_local_server.return_value = mock_credentials
+        mock_flow_class.from_client_secrets_file.return_value = mock_flow
         
         # Mock service
         with patch('app.youtube_client.build') as mock_build:
@@ -252,9 +263,15 @@ class TestYouTubeClientErrorHandling:
             
             assert result is None
     
-    def test_authenticate_flow_error(self):
+    @patch('app.youtube_client.Path')
+    def test_authenticate_flow_error(self, mock_path_class):
         """Test authentication with flow error."""
         client = YouTubeClient()
+        
+        # Mock Path.exists() to return True
+        mock_path = Mock()
+        mock_path.exists.return_value = True
+        mock_path_class.return_value = mock_path
         
         with patch('app.youtube_client.InstalledAppFlow') as mock_flow_class:
             mock_flow = Mock()
