@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .db import get_db_session, update_system_status
 from .dedupe import check_download_duplicate, check_transform_duplicate, process_all_duplicates
-from .ig_downloader import download_all_targets
+# from .ig_downloader import download_all_targets  # Function not implemented yet
 from .models import Approval, StatusEnum, Transform, Upload
 from .telegram_bot import create_telegram_bot
 from .transform import transform_download
