@@ -186,5 +186,19 @@ def reload_settings() -> Settings:
         'channel_title': os.getenv('CHANNEL_TITLE', 'My YouTube Channel'),
         'log_level': os.getenv('LOG_LEVEL', 'INFO'),
     }
-    settings = Settings(**env_vars)
+    settings = Settings(
+        demo_mode=env_vars['demo_mode'],
+        timezone=env_vars['timezone'],
+        schedule_times=env_vars['schedule_times'],
+        youtube_client_secrets=env_vars['youtube_client_secrets'],
+        token_file=env_vars['token_file'],
+        telegram_bot_token=env_vars['telegram_bot_token'],
+        telegram_admin_id=env_vars['telegram_admin_id'],
+        storage_path=env_vars['storage_path'],
+        db_url=env_vars['db_url'],
+        branded_intro=env_vars['branded_intro'],
+        branded_outro=env_vars['branded_outro'],
+        channel_title=env_vars['channel_title'],
+        log_level=env_vars['log_level']
+    )
     return settings
