@@ -10,8 +10,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Base
-from app.db import init_database
+from app.models import Base, create_tables
+from app.db import get_engine
 
 
 @pytest.fixture(scope="session")
@@ -27,10 +27,8 @@ def test_db():
     os.environ['DB_URL'] = db_url
     
     # Initialize database properly
-    init_database(db_url)
-    
-    # Create engine and tables
     engine = create_engine(db_url, echo=False)
+    create_tables(engine)
     Base.metadata.create_all(engine)
     
     yield db_url
