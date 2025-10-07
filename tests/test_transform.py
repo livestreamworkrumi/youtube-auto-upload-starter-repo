@@ -131,12 +131,12 @@ class TestVideoTransformer:
         except ImportError:
             pytest.skip("MoviePy not available")
     
-    def test_process_video_demo_mode(self, transformer):
+    def test_process_video_demo_mode(self, transformer, db_session):
         """Test video processing in demo mode."""
         # Mock demo mode
         transformer.settings.demo_mode = True
         
-        # Create mock download
+        # Create mock download and save to database
         target = InstagramTarget(username="test_user", is_active=True)
         download = Download(
             target=target,
@@ -149,6 +149,11 @@ class TestVideoTransformer:
             duration_seconds=30,
             caption="Test caption"
         )
+        
+        # Save to database to get an ID
+        db_session.add(target)
+        db_session.add(download)
+        db_session.commit()
         
         # Mock the processing methods
         with patch.object(transformer, '_process_video') as mock_process:
