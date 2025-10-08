@@ -91,11 +91,28 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    - name: Test Docker image
-      run: |
-        # Test that the image was built successfully
-        docker images | grep youtube-auto-upload
-        echo "Docker image built successfully"
+     - name: Verify Docker image
+       run: |
+         # List all Docker images to see what was built
+         docker images
+         
+         # Check if our image exists
+         if docker images | grep youtube-auto-upload; then
+           echo "✅ Docker image built successfully"
+           
+           # Test basic image functionality
+           echo "Testing Docker image basic functionality..."
+           docker run --rm youtube-auto-upload:latest python --version
+           echo "✅ Docker image can run Python"
+           
+           # Test health check script
+           echo "Testing health check script..."
+           docker run --rm youtube-auto-upload:latest python health_check.py
+           echo "✅ Health check script passed"
+         else
+           echo "❌ Docker image was not built successfully"
+           exit 1
+         fi
 
   security:
     runs-on: ubuntu-latest
