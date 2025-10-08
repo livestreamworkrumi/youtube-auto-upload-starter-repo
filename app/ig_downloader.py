@@ -86,15 +86,14 @@ class InstagramDownloader:
                 # Create download record
                 download = Download(
                     target_id=target.id,
+                    ig_post_id=f"demo_{username}_{i}",
                     ig_shortcode=f"demo_{username}_{i}",
                     source_url=source_url,
                     local_path=video_path,
                     permission_proof_path=proof_path,
                     caption=f"Demo video {i+1} from @{username}",
-                    duration=random.randint(15, 60),
+                    duration_seconds=random.randint(15, 60),
                     file_size=random.randint(1024*1024, 10*1024*1024),  # 1MB to 10MB
-                    status=StatusEnum.COMPLETED,
-                    downloaded_at=datetime.utcnow()
                 )
                 session.add(download)
                 session.commit()
